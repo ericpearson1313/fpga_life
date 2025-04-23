@@ -1,0 +1,20 @@
+Simulatio is awkward.
+Need to put test bench in dialog box.
+and select the UUT as the top level design, and then run sim.
+
+
+Biggest thing is re-running a sim.
+
+To Add waves and then re-run do: (no compile)
+
+add wave _uut/*
+restart -f
+run -all
+
+
+Change a file (turn off read only to edit in sim window), need to re-run do
+
+do blaster_run_msim_rtl_verilog.do
+add wave _uut/*
+restart -f
+run -all

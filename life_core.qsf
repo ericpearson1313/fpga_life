@@ -1,0 +1,241 @@
+# -------------------------------------------------------------------------- #
+#
+# Copyright (C) 2023  Intel Corporation. All rights reserved.
+# Your use of Intel Corporation's design tools, logic functions 
+# and other software and tools, and any partner logic 
+# functions, and any output files from any of the foregoing 
+# (including device programming or simulation files), and any 
+# associated documentation or information are expressly subject 
+# to the terms and conditions of the Intel Program License 
+# Subscription Agreement, the Intel Quartus Prime License Agreement,
+# the Intel FPGA IP License Agreement, or other applicable license
+# agreement, including, without limitation, that your use is for
+# the sole purpose of programming logic devices manufactured by
+# Intel and sold by Intel or its authorized distributors.  Please
+# refer to the applicable agreement for further details, at
+# https://fpgasoftware.intel.com/eula.
+#
+# -------------------------------------------------------------------------- #
+#
+# Quartus Prime
+# Version 23.1std.0 Build 991 11/28/2023 SC Lite Edition
+# Date created = 11:07:06  May 16, 2024
+#
+# -------------------------------------------------------------------------- #
+#
+# Notes:
+#
+# 1) The default values for assignments are stored in the file:
+#		blaster_assignment_defaults.qdf
+#    If this file doesn't exist, see file:
+#		assignment_defaults.qdf
+#
+# 2) Intel recommends that you do not modify this file. This
+#    file is updated automatically by the Quartus Prime software
+#    and any changes you make may be lost or overwritten.
+#
+# -------------------------------------------------------------------------- #
+
+
+set_global_assignment -name FAMILY "MAX 10"
+set_global_assignment -name DEVICE 10M04SCE144C8G
+set_global_assignment -name TOP_LEVEL_ENTITY life_core
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION 23.1STD.0
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "11:07:06  MAY 16, 2024"
+set_global_assignment -name LAST_QUARTUS_VERSION "23.1std.0 SP0.02std Lite Edition"
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name DEVICE_FILTER_PACKAGE EQFP
+set_global_assignment -name DEVICE_FILTER_PIN_COUNT 144
+set_global_assignment -name DEVICE_FILTER_SPEED_GRADE 8
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
+set_global_assignment -name EDA_SIMULATION_TOOL "Questa Intel FPGA (Verilog)"
+set_global_assignment -name EDA_TIME_SCALE "1 ps" -section_id eda_simulation
+set_global_assignment -name EDA_OUTPUT_DATA_FORMAT "VERILOG HDL" -section_id eda_simulation
+set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST OFF -section_id eda_board_design_timing
+set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST OFF -section_id eda_board_design_symbol
+set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST OFF -section_id eda_board_design_signal_integrity
+set_global_assignment -name EDA_GENERATE_FUNCTIONAL_NETLIST OFF -section_id eda_board_design_boundary_scan
+set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
+set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
+set_global_assignment -name EDA_TEST_BENCH_ENABLE_STATUS TEST_BENCH_MODE -section_id eda_simulation
+set_global_assignment -name EDA_NATIVELINK_SIMULATION_TEST_BENCH testbench -section_id eda_simulation
+set_global_assignment -name EDA_TEST_BENCH_NAME testbench -section_id eda_simulation
+set_global_assignment -name EDA_DESIGN_INSTANCE_NAME NA -section_id testbench
+set_global_assignment -name EDA_TEST_BENCH_MODULE_NAME testbench -section_id testbench
+set_global_assignment -name EDA_TEST_BENCH_FILE testbench.sv -section_id testbench
+set_global_assignment -name FLOW_ENABLE_POWER_ANALYZER ON
+set_global_assignment -name POWER_DEFAULT_INPUT_IO_TOGGLE_RATE "12.5 %"
+set_location_assignment PIN_33 -to clk_out
+set_location_assignment PIN_29 -to clk_in
+set_location_assignment PIN_120 -to arm_button
+set_location_assignment PIN_124 -to fire_button
+set_location_assignment PIN_127 -to iset[0]
+set_location_assignment PIN_130 -to iset[1]
+set_location_assignment PIN_131 -to iset[2]
+set_location_assignment PIN_132 -to arm_led_n
+set_location_assignment PIN_135 -to cont_led_n
+set_location_assignment PIN_140 -to speaker
+set_location_assignment PIN_141 -to speaker_n
+set_location_assignment PIN_62 -to lt3420_charge
+set_location_assignment PIN_64 -to lt3420_done
+set_location_assignment PIN_28 -to reset_n
+set_location_assignment PIN_65 -to pwm
+set_location_assignment PIN_69 -to cont_n
+set_location_assignment PIN_66 -to dump
+set_location_assignment PIN_106 -to ad_cs
+set_location_assignment PIN_102 -to ad_sdata_a[1]
+set_location_assignment PIN_99 -to ad_sdata_a[0]
+set_location_assignment PIN_105 -to ad_sdata_b[1]
+set_location_assignment PIN_100 -to ad_sdata_b[0]
+set_location_assignment PIN_86 -to spi8_data_pad[7]
+set_location_assignment PIN_84 -to spi8_data_pad[6]
+set_location_assignment PIN_79 -to spi8_data_pad[5]
+set_location_assignment PIN_76 -to spi8_data_pad[4]
+set_location_assignment PIN_77 -to spi8_data_pad[3]
+set_location_assignment PIN_75 -to spi8_data_pad[2]
+set_location_assignment PIN_85 -to spi8_data_pad[1]
+set_location_assignment PIN_78 -to spi8_data_pad[0]
+set_location_assignment PIN_74 -to spi_ds
+set_location_assignment PIN_81 -to spi_ncs
+set_location_assignment PIN_87 -to spi_clk0
+set_location_assignment PIN_101 -to ad_sclk
+set_location_assignment PIN_96 -to CIdiag
+set_location_assignment PIN_97 -to CVdiag
+set_location_assignment PIN_93 -to LIdiag
+set_location_assignment PIN_98 -to LVdiag
+set_location_assignment PIN_39 -to hdmi_ck
+set_location_assignment PIN_38 -to "hdmi_ck(n)"
+set_location_assignment PIN_43 -to hdmi_d0
+set_location_assignment PIN_41 -to "hdmi_d0(n)"
+set_location_assignment PIN_45 -to hdmi_d1
+set_location_assignment PIN_44 -to "hdmi_d1(n)"
+set_location_assignment PIN_47 -to hdmi_d2
+set_location_assignment PIN_46 -to "hdmi_d2(n)"
+set_location_assignment PIN_13 -to anain[7]
+set_location_assignment PIN_12 -to anain[6]
+set_location_assignment PIN_11 -to anain[5]
+set_location_assignment PIN_10 -to anain[4]
+set_location_assignment PIN_8 -to anain[3]
+set_location_assignment PIN_7 -to anain[2]
+set_location_assignment PIN_6 -to anain[1]
+set_location_assignment PIN_24 -to rx232
+set_location_assignment PIN_25 -to tx232
+set_location_assignment PIN_110 -to digio[6]
+set_location_assignment PIN_112 -to digio[5]
+set_location_assignment PIN_111 -to digio[4]
+set_location_assignment PIN_114 -to digio[3]
+set_location_assignment PIN_113 -to digio[2]
+set_location_assignment PIN_119 -to digio[1]
+set_location_assignment PIN_14 -to anain[8]
+set_location_assignment PIN_118 -to digio[0]
+set_location_assignment PIN_52 -to hdmi2_ck
+set_location_assignment PIN_50 -to "hdmi2_ck(n)"
+set_location_assignment PIN_56 -to hdmi2_d0
+set_location_assignment PIN_55 -to "hdmi2_d0(n)"
+set_location_assignment PIN_58 -to hdmi2_d1
+set_location_assignment PIN_57 -to "hdmi2_d1(n)"
+set_location_assignment PIN_60 -to hdmi2_d2
+set_location_assignment PIN_59 -to "hdmi2_d2(n)"
+set_location_assignment PIN_80 -to spi_nrst
+set_global_assignment -name ENABLE_OCT_DONE OFF
+set_global_assignment -name ENABLE_BOOT_SEL_PIN OFF
+set_global_assignment -name USE_CONFIGURATION_DEVICE ON
+set_global_assignment -name ENABLE_CRC_ERROR_PIN ON
+set_global_assignment -name CRC_ERROR_OPEN_DRAIN OFF
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -fall
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -fall
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CIdiag
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CVdiag
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LIdiag
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LVdiag
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_cs
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sclk
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sdata_a
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sdata_a[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sdata_a[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sdata_b[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ad_sdata_b[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to anain[8]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to arm_button
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to arm_led_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk_in
+set_instance_assignment -name IO_STANDARD LVDS_E_3R -to clk_out
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to cont_led_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to cont_n
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[0]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[1]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[2]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[3]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[4]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[5]
+set_instance_assignment -name IO_STANDARD "3.0-V LVCMOS" -to digio[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to dump
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to fire_button
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi2_ck
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi2_d0
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi2_d1
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi2_d2
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi_ck
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi_d0
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi_d1
+set_instance_assignment -name IO_STANDARD LVDS -to hdmi_d2
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to iset[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to iset[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to iset[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to lt3420_charge
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to lt3420_done
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to pwm
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to reset_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to rx232
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to speaker
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to speaker_n
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[0]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[1]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[2]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[3]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[4]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[5]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[6]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi8_data_pad[7]
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi_clk0
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi_ds
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi_ncs
+set_instance_assignment -name IO_STANDARD "1.8 V" -to spi_nrst
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to tx232
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to digio[0]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to digio[2]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to digio[4]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to iset[2]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to iset[1]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to iset[0]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to iset
+set_global_assignment -name SYSTEMVERILOG_FILE life_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE testbench.sv
+set_global_assignment -name QIP_FILE hdmi_out.qip
+set_global_assignment -name SIP_FILE hdmi_out.sip
+set_global_assignment -name SYSTEMVERILOG_FILE hdmi_video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE font57.sv
+set_global_assignment -name TEXT_FILE font_rom_init.txt
+set_global_assignment -name TEXT_FILE text_overlay_rom_init.txt
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_global_assignment -name QIP_FILE ufm_flash/synthesis/ufm_flash.qip
+set_global_assignment -name QIP_FILE trial_pll.qip
+set_global_assignment -name MIF_FILE flash_rom.mif
+set_global_assignment -name SDC_FILE life_core.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE packet_test.sv
+set_global_assignment -name SYSTEMVERILOG_FILE packet_assembler.sv
+set_global_assignment -name SYSTEMVERILOG_FILE auxiliary_video_information_info_frame.sv
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
