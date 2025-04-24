@@ -29,3 +29,8 @@ set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk
 set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[1]}] -to [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[4]}]
 set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[2]}] -to [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[3]}]
 set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[2]}] -to [get_clocks {_spll|altpll_component|auto_generated|pll1|clk[4]}]
+
+#Ignore case of auto generated we_reg to output 
+#The simulataneous raddr=waddr is avoided by design
+#set_false_path -from {life_engine:_life_engine|altsyncram:ram_rtl_0|altsyncram_9q71:auto_generated|ram_block1a100~porta_we_reg} -to {life_engine:_life_engine|cell_array[0][101]}
+set_false_path -from [get_pins {life_engine:_life_engine|altsyncram*porta_we_reg}] -to [get_pins {life_engine:_life_engine|cell_array*}]
