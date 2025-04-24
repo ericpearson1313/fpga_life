@@ -498,6 +498,7 @@ module life_engine #(
 	end
 
 	logic [255:0][1:0] add3;
+	logic [255:0][1:0] add3_q;
 	logic [255:0][3:0] add9;
 	always_comb begin : _life_cells
 		// Form add3 array
@@ -508,9 +509,9 @@ module life_engine #(
 		end
 		// Form add9 array (adding 3 x add3 values)
 		for( int ii = 0; ii < 256; ii++ ) begin
-			add9[ii] =  { 2'b00, (ii==255)?add3[0]:add3[ii+1] } +
-							{ 2'b00,                   add3[ii+0] } +
-							{ 2'b00, (ii==0)?add3[255]:add3[ii-1] } ;
+			add9[ii] =  { 2'b00, (ii==255)?add3_q[0]:add3_q[ii+1] } +
+							{ 2'b00,                     add3_q[ii+0] } +
+							{ 2'b00, (ii==0)?add3_q[255]:add3_q[ii-1] } ;
 		end
 		// Calculate cell state
 		for( int ii = 0; ii < 256; ii++ ) begin
@@ -521,6 +522,9 @@ module life_engine #(
 		end
 	end
 	
+	always @(posedge clk) 
+		add3_q <= add3;
+		
 	always_ff@(posedge clk)
 		mem_wdata <= cell_next;
 
