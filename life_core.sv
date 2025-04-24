@@ -70,8 +70,47 @@ module life_core
 	input logic reset_n
 );
 
-	logic [4:0] key; // keypad, bit 4 indicates pressed
+/////////////////////
+//
+// Unused IO Tie-off/Turn off
+//		Extdev may/may_not be present
+//
+/////////////////////
 
+	// Turn off leds speaker
+	assign arm_led_n	= 1'b0; 
+	assign cont_led_n	= 1'b0;
+	assign speaker		= 1'b0;
+	assign speaker_n	= 1'b0;
+	
+	// Float future comm port
+	assign digio = 7'bzzz_zzzz;
+	
+	// Rs232
+	assign tx2323 = rx232; // wire through
+	
+	// Safe the High Voltage 
+	assign lt3420_charge = 1'b0;
+	assign  pwm 			= 1'b0;
+	assign  dump 			= 1'b1; // turn on dump for safety
+	
+	// Tie off Turn off A/D Converters 
+	assign ad_cs 	= 1'b0;
+	assign ad_sclk = 1'b0;
+	
+	// Tie off/turn off SPI8 Bus
+	assign spi8_data_pad = 8'bzzzz_zzzz;
+	assign spi_clk0 	= 1'b0;
+	assign spi_ncs 	= 1'b1;
+	assign spi_ds 		= 1'bz;
+	assign spi_nrst 	= 1'b0;
+
+
+/////////////////////
+//
+// Clock and Reset
+//
+/////////////////////
 
 
 // PLL (only 1 PLL in E144 package!)
@@ -90,7 +129,7 @@ trial_pll _spll(
 	.c4	  (hdmi_clk5)  // HDMI ddr clock 5x
 	);
 	
-assign ad_sclk  = !clk;
+// assign ad_sclk  = !clk;		// TODO: Ren-enable if ADC is used. Impotant that its inverterted!!!!
 
 // delayed from fpga config and external reset d-assert
 
@@ -111,25 +150,12 @@ logic reset;
 assign reset = (reset_shift[3:0] != 4'hF) ? 1'b1 : 1'b0; // reset de-asserted after all bit shifted in 
 
 
-// Continuity active low
-logic cont;
-assign cont = !cont_n;
+/////////////////////
+//
+// Debug LEDs anain[8:1]
+//
+/////////////////////	
 
-
-
-/////////////////////////////////////////////////////////
-
-
-
-// Rs232 loopback
-assign tx232 = rx232;
-// LEDs active low
-logic arm_led;
-logic cont_led;
-assign arm_led_n = arm_led;	// not complemented bc external NPN
-assign cont_led_n = cont_led; //  we added a NPN  to drive 12v led
-
-// AIN
 assign anain[3:1] = iset[2:0]; // active low switch inputs
 assign anain[4] = !reset;
 logic [24:0] count;
@@ -455,40 +481,11 @@ module life_engine #(
 		mem_rdata <= ram[raddr];
 	end	
 	
-	//// Port A - is our main write port
-	//always @ (posedge clk)
-	//begin
-	//	if (we) 
-	//	begin
-	//		ram[waddr] <= mem_wdata;
-	//		//q_a <= data_a;
-	//	end
-	//	else 
-	//	begin
-	//		//q_a <= ram[addr_a];
-	//	end 
-	//end 
-//
-	//// Port B is our main read port, but we can write during init
-	//always @ (posedge clk)
-	//begin
-	//	if (init) 
-	//	begin
-	//		ram[raddr] <= init_data;
-	//		mem_rdata <= init_data;
-	//	end
-	//	else 
-	//	begin
-	//		mem_rdata <= ram[raddr];
-	//	end 
-	//end	
-	
 
 	always_ff@(posedge clk)
 		if( ld ) dout <= mem_rdata;
-		
+				
 	// Shift register
-	
 	logic [2:0][WIDTH-1:0] cell_array;
 	
 	// Shift register input
