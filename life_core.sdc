@@ -33,4 +33,4 @@ set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk
 #Ignore case of auto generated we_reg to output 
 #The simulataneous raddr=waddr is avoided by design
 #set_false_path -from {life_engine:_life_engine|altsyncram:ram_rtl_0|altsyncram_9q71:auto_generated|ram_block1a100~porta_we_reg} -to {life_engine:_life_engine|cell_array[0][101]}
-set_false_path -from [get_pins {life_engine:_life_engine|altsyncram*porta_we_reg}] -to [get_pins {life_engine:_life_engine|cell_array*}]
+set_false_path -from [get_registers {*ram_block*porta_we_reg}] -to [get_registers {life_engine:_life_engine|cell_array*}]
