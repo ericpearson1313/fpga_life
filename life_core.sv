@@ -165,21 +165,32 @@ end
 assign anain[8:5] = count[24:21];
 assign anain[8]=count[24];
 
-
+/////////////////////
+//
+// Life Engine
+//
+/////////////////////	
 
 	// Integrate the life engine
 	logic [255:0] init_word;
-	logic [255:0] life_word; // latched read workd
+	logic [255:0] life_word; // latched read word
+	logic [7:0] raddr;
+	logic [7:0] waddr;
+	logic we; // write enable of life calc output or current init word
+	logic sh; // shift in a row (from last cycle read)
+	logic ld; // latch a row into dout (from last cycle)
+	logic we_init; // selects init_word as we data source 
+	
 	life_engine _life_engine (
 		.clk  ( clk4 ),
 		.reset( reset ),
-		.raddr( count[7:0] ),
-		.waddr( count[7:0] ),
-		.we( count[2] ),
-		.re( count[3] ),
-		.ld( count[17] ),
+		.raddr( raddr ),
+		.waddr( waddr ),
+		.we( we ),
+		.sh( sh ),
+		.ld( ld ),
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
-		.init( count[21] ),
+		.init( we_init ),
 		.init_data( init_word ) // 256 bit
 	);
 	
@@ -210,9 +221,62 @@ assign anain[8]=count[24];
 	// need an init memory method.
 	// suggest maybe true dual port and use the 2nd write port from a 256bit write reg.
 	
+	// Signalsw from video clock domain
+	logic [7:0] vraddr; // video row read addr ASYNC, but stable before use in clk4 domain
+	logic video_blank;
+	
+	// Blank CC regs and faling pulse detector and ld flag reg.
+	logic [3:0] blank_cc;
+	logic blank_fall;
+	always @(posedge clk4) begin
+		blank_cc <= { blank_cc[2:0], video_blank };
+		blank_fall <= blank_cc[3] &!blank_cc[2];
+	end
+
+	
+	// Generation read state machine, runs loops if life_go. 
+	// Min 2 cycles for life_go as maybe over-ridden
+	// Will complete 
+	
+	logic life_go;
+	assign life_go = fire_button;
+	logic [9:0] read_row;
+	always@( posedge clk ) begin
+		if( reset ) begin
+			read_row <= 10'h3ff;
+			sh <= 0;
+			ld <= 0;
+		end else begin
+			ld <= blank_fall;
+			sh <= !blank_fall;
+			if( blank_fall ) begin // over-ride this cycle
+				read_row <= read_row; // repeat it again
+			end else if( read_row == 10'h3ff ) begin
+				read_row <= ( life_go ) ? 10'h000 : 10'h3ff;
+			end else if ( read_row == 10'h105 ) begin
+				read_row <= ( life_go ) ? 10'h006 : 10'h3ff;
+			end else begin
+				read_row <= read_row + 1;
+			end
+		end
+	end
+
+	assign raddr = ( blank_fall ) ? vraddr : read_row[7:0]; // over-ride address this cycle
+	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 5; // write is 5 cycle delayed
+	assign we    = ( read_row >= 4 && read_row < 10'h105 ) || we_init; // write window
+	
+	// Initialization cycles
+	
+	logic [16:0] init_count;
+	always @(posedge clk4) begin	
+		if( reset ) begin
+			init_count <= 0;
+		end else begin
+			init_count <= ( init_count != 17'h10000 ) ? init_count + 1 : init_count;
+		end
+	end
 		
-	
-	
+	assign we_init = ( init_count[7:0] == 8'hff ) ? 1'b1 : 1'b0;
 	
 	/////////////////////////////////
 	////
@@ -256,8 +320,8 @@ assign anain[8]=count[24];
 	// WIthin window (256,128) to (511,383) will be in the window
 	// will generate 2 colors.
 	
-		// Video shift register
-	
+	// Video shift register
+	// VIdeo clock domain
 	logic [255:0] life_row; // loaded async
 	logic vid_shift;
 	logic [9:0] xcnt, ycnt; // Position counters
@@ -271,11 +335,15 @@ assign anain[8]=count[24];
 			ycnt <= ( vsync ) ? 0 : 
 					  ( blank && !blank_d1 ) ? ycnt + 1 : ycnt;
 			// Life cell row shift register, *NOTE* Async load
-			life_row <= ( vid_shift ) ? { 1'b0, life_row[255:1] } : life_word;
+			life_row <=( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 ) ? { 1'b0, life_row[255:1] } : /* asyncronous */life_word ;
 			// Overlay
 			life_fg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 &&  life_row[0] ) ? 1'b1 : 1'b0;
 			life_bg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 && !life_row[0] ) ? 1'b1 : 1'b0;
 	end
+
+	assign vraddr = ( ycnt >= 128 && ycnt < 384 ) ? ycnt - 128 : 0 ; // video row read addr ASYNC, but stable before use in clk4 domain
+	assign video_blank = blank;
+	
 	
 
 	// Font Generator
@@ -315,43 +383,43 @@ assign anain[8]=count[24];
 	// the serial interface runs at 6 Mhz (max 7 Mhz!)
 	// we assigned c0 the output diff pair clock to this interface.
 	
-	logic [11:0] 	flash_addr; // 32 bit word address, 16Kbytes total flash for M04
-	logic 			flash_read;
-	logic				flash_data;
-	logic 			flash_wait;
-	logic 			flash_valid;
-	ufm_flash _flash (
-		.clock						( clk_out 			 ), // 6 Mhz
-		.avmm_data_addr			( flash_addr[11:0] ), // word address 
-		.avmm_data_read			( flash_read 		 ),
-		.avmm_data_readdata		( flash_data 		 ),
-		.avmm_data_waitrequest	( flash_wait 		 ),
-		.avmm_data_readdatavalid( flash_valid 		 ),
-		.avmm_data_burstcount	( 128 * 32 			 ), // 4K bit burst
-		.reset_n						( !reset 			 )
-	);	
+	//logic [11:0] 	flash_addr; // 32 bit word address, 16Kbytes total flash for M04
+	//logic 			flash_read;
+	//logic				flash_data;
+	//logic 			flash_wait;
+	//logic 			flash_valid;
+	//ufm_flash _flash (
+	//	.clock						( clk_out 			 ), // 6 Mhz
+	//	.avmm_data_addr			( flash_addr[11:0] ), // word address 
+	//	.avmm_data_read			( flash_read 		 ),
+	//	.avmm_data_readdata		( flash_data 		 ),
+	//	.avmm_data_waitrequest	( flash_wait 		 ),
+	//	.avmm_data_readdatavalid( flash_valid 		 ),
+	//	.avmm_data_burstcount	( 128 * 32 			 ), // 4K bit burst
+	//	.reset_n						( !reset 			 )
+	//);	
 	
 	// Text Overlay (from flash rom)
 	logic text_ovl;
 	logic [3:0] text_color;
-	text_overlay _text
-	(
-		.clk( hdmi_clk  ),
-		.reset( reset ),
-		.blank( blank ),
-		.hsync( hsync ),
-		.vsync( vsync ),
-		// Overlay output bit for ORing
-		.overlay( text_ovl ),
-		.color( text_color ),
-		// Avalon bus to init font and text rams
-		.flash_clock( clk_out 			 ), // 6 Mhz
-		.flash_addr ( flash_addr[11:0] ), // word address 
-		.flash_read ( flash_read 		 ),
-		.flash_data ( flash_data 		 ),
-		.flash_wait ( flash_wait 		 ),
-		.flash_valid( flash_valid 		 )
-	);
+	//ext_overlay _text
+	//
+	//	.clk( hdmi_clk  ),
+	//	.reset( reset ),
+	//	.blank( blank ),
+	//	.hsync( hsync ),
+	//	.vsync( vsync ),
+	//	// Overlay output bit for ORing
+	//	.overlay( text_ovl ),
+	//	.color( text_color ),
+	//	// Avalon bus to init font and text rams
+	//	.flash_clock( clk_out 			 ), // 6 Mhz
+	//	.flash_addr ( flash_addr[11:0] ), // word address 
+	//	.flash_read ( flash_read 		 ),
+	//	.flash_data ( flash_data 		 ),
+	//	.flash_wait ( flash_wait 		 ),
+	//	.flash_valid( flash_valid 		 )
+	//;
 
 	
 	// Overlay Text - Dynamic
@@ -447,7 +515,8 @@ module life_engine #(
 	input logic [DBITS-1:0] raddr, // also used for init writes
 	input logic [DBITS-1:0] waddr,
 	input	logic we,
-	input logic re,
+	// cell array shift input
+	input logic sh,
 	// External Data Control
 	input logic ld,
 	output logic [WIDTH-1:0] dout, // data out
@@ -468,8 +537,6 @@ module life_engine #(
 	logic [WIDTH-1:0] mem_wdata;
 	logic [WIDTH-1:0] mem_rdata;
 	logic [WIDTH-1:0] cell_next;
-	logic re_del;
-
 
 	
 	always_ff@(posedge clk)
@@ -477,7 +544,6 @@ module life_engine #(
 		// Write
 		if(we) ram[waddr] <= ( init ) ? init_data : mem_wdata;
 		// Read
-		re_del <= re;	// delay to match read data
 		mem_rdata <= ram[raddr];
 	end	
 	
@@ -491,7 +557,7 @@ module life_engine #(
 	// Shift register input
 	always_ff@(posedge clk)
 	begin
-		cell_array[2:0] <= (re_del) ? { cell_array[1:0], mem_rdata } : cell_array[2:0];
+		cell_array[2:0] <= (sh) ? { cell_array[1:0], mem_rdata } : cell_array[2:0];
 	end
 
 	logic [255:0][1:0] add3;
