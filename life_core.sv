@@ -537,20 +537,31 @@ module life_engine #(
 	logic [WIDTH-1:0] mem_wdata;
 	logic [WIDTH-1:0] mem_rdata;
 	logic [WIDTH-1:0] cell_next;
+	logic [7:0] mem_raddr;
 
+
+	// Fully registered 2 port ram
+	cell_ram _cell_ram (
+		.clock( clk ),
+		.data( (init) ? init_data : mem_wdata ),
+		.rdaddress( raddr ),
+		.wraddress( waddr ),
+		.wren( we ),
+		.q( mem_rdata )
+	);
 	
-	always_ff@(posedge clk)
-	begin
-		// Write
-		if(we) ram[waddr] <= ( init ) ? init_data : mem_wdata;
-		// Read
-		mem_rdata <= ram[raddr];
-	end	
-	
+	//always_ff@(posedge clk)
+	//begin
+	//	// Write
+	//	if(we) ram[waddr] <= ( init ) ? init_data : mem_wdata;
+	//	// Read (2 cycles)
+	//	mem_raddr <= raddr;
+	//	mem_rdata <= ram[mem_raddr];
+	//end	
 
 	always_ff@(posedge clk)
 		if( ld ) dout <= mem_rdata;
-				
+		
 	// Shift register
 	logic [2:0][WIDTH-1:0] cell_array;
 	
@@ -586,9 +597,9 @@ module life_engine #(
 	end
 	
 	always @(posedge clk) 
-		add3_q <= add3;
+		if( sh ) add3_q <= add3;
 		
 	always_ff@(posedge clk)
-		mem_wdata <= cell_next;
+		if( sh ) mem_wdata <= cell_next;
 
 endmodule
