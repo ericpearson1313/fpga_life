@@ -80,8 +80,8 @@ module life_core
 	// Turn off leds speaker
 	assign arm_led_n	= 1'b0; 
 	assign cont_led_n	= 1'b0;
-	assign speaker		= 1'b0;
-	assign speaker_n	= 1'b0;
+	//assign speaker		= 1'b0;
+	//assign speaker_n	= 1'b0;
 	
 	// Float future comm port
 	assign digio = 7'bzzz_zzzz;
@@ -165,6 +165,46 @@ end
 assign anain[8:5] = count[24:21];
 assign anain[8]=count[24];
 
+// Fire Button
+
+logic fire_button_debounce;
+logic fbd_delay;
+logic short_fire;
+logic long_fire; // fire button held down >1 wsec
+
+debounce _firedb ( .clk( clk ), .reset( reset ), .in( fire_button ), .out( fire_button_debounce ), .long( long_fire ));
+
+always @(posedge clk) begin
+	fbd_delay <= fire_button_debounce;
+	short_fire <= fire_button_debounce & !fbd_delay;
+end
+
+// Speaker C5 to C6
+logic [15:0] tone_cnt;
+logic cont_tone;
+logic spk_toggle;
+
+always @(posedge clk) begin
+	if( tone_cnt == 0 ) begin
+		spk_toggle <= !spk_toggle;
+		tone_cnt   <= ( fire_button_debounce  ) ? { 16'h2CCA } /* C5 */ : 
+								   //( key == 5'h12 ) ? { 16'h27E7 } /* D5 */ :
+								   //( key == 5'h13 ) ? { 16'h238D } /* E5 */ :
+								   //( key == 5'h14 ) ? { 16'h218E } /* F5 */ :
+								   //( key == 5'h15 ) ? { 16'h1DE5 } /* G5 */ :
+								   //( key == 5'h16 ) ? { 16'h1AA2 } /* A5 */ :
+								   //( key == 5'h17 ) ? { 16'h17BA } /* B5 */ :
+								   //( key == 5'h18 ) ? { 16'h1665 } /* C6 */ : 
+														                0; // mute
+	end else begin
+		tone_cnt <= tone_cnt - 1;
+		spk_toggle <= spk_toggle;
+	end
+end
+
+assign speaker = spk_toggle; 
+assign speaker_n = !speaker;
+
 /////////////////////
 //
 // Life Engine
@@ -239,7 +279,7 @@ assign anain[8]=count[24];
 	// Will complete 
 	
 	logic life_go;
-	assign life_go = fire_button;
+	assign life_go = short_fire || long_fire;
 	logic [9:0] read_row;
 	always@( posedge clk ) begin
 		if( reset ) begin
@@ -601,5 +641,67 @@ module life_engine #(
 		
 	always_ff@(posedge clk)
 		if( sh ) mem_wdata <= cell_next;
+
+endmodule
+
+
+// Debounce of pushbutton
+module debounce(
+	input clk,
+	input reset,
+	input in,
+	output out,	// fixed pulse 15ms after 5ms pressure
+	output long // after fire held for > 2/3 sec, until release
+	);
+	
+	logic [25:0] count1; // total 1.3 sec
+	logic [22:0] count0;
+	logic [2:0] state;
+	logic [2:0] meta;
+	logic       inm;
+
+	
+	always @(posedge clk) { inm, meta } <= { meta, in };
+	
+	// State Machine	
+	localparam S_IDLE 		= 0;
+	localparam S_WAIT_PRESS	= 1;
+	localparam S_WAIT_PULSE	= 2;
+	localparam S_WAIT_LONG	= 3;
+	localparam S_LONG			= 4;
+	localparam S_WAIT_OFF	= 5;
+	localparam S_WAIT_LOFF	= 6;
+	
+	always @(posedge clk) begin
+		if( reset ) begin
+			state <= S_IDLE;
+		end else begin
+			case( state )
+				S_IDLE 		 :	state <= ( inm ) ? S_WAIT_PRESS : S_IDLE;
+				S_WAIT_PRESS :	state <= (!inm ) ? S_IDLE       : (count1 == ( 5  * 48000 )) ? S_WAIT_PULSE : S_WAIT_PRESS;
+				S_WAIT_PULSE :	state <=                          (count1 == ( 25 * 48000 )) ? S_WAIT_LONG  : S_WAIT_PULSE; 
+				S_WAIT_LONG	 :	state <= (!inm ) ? S_WAIT_OFF   : (count1 >= 26'h20_00000  ) ? S_LONG       : S_WAIT_LONG;
+				S_LONG		 :	state <= (!inm ) ? S_WAIT_LOFF  :  S_LONG;
+				S_WAIT_OFF	 :	state <= ( inm ) ? S_WAIT_LONG  : (count0 == ( 100 * 48000)) ? S_IDLE       : S_WAIT_OFF;
+				S_WAIT_LOFF	 :	state <= ( inm ) ? S_LONG       : (count0 == ( 100 * 48000)) ? S_IDLE       : S_WAIT_LOFF;
+				default: state <= S_IDLE;
+			endcase
+		end
+	end
+	
+	assign out = (state == S_WAIT_PULSE) ? 1'b1 : 1'b0;
+	assign long = (state == S_LONG || state == S_WAIT_LOFF) ? 1'b1 : 1'b0;
+	
+	// Counters
+	always @(posedge clk) begin
+		if( reset ) begin
+			count0 <= 0;
+			count1 <= 0;
+		end else begin
+			count0 <= ( state == S_WAIT_OFF  || 
+			            state == S_WAIT_LOFF ) ? (count0 + 1) : 0; // count when low waiting
+			count1 <= ( state == S_IDLE      ) ? 0            : (count1 + 1); 
+		end
+	end
 
 endmodule
