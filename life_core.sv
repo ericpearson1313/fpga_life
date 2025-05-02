@@ -235,21 +235,42 @@ assign speaker_n = !speaker;
 	);
 	
 	// Generate Init word (lfsr for now)
+	// LFSR from: https://datacipy.elektroniche.cz/lfsr_table.pdf
 	
+	logic [255:0] lfsr;
 	always_ff @(posedge clk4 ) begin
 		if( reset ) begin
-			init_word <= 256'b1;
-		end else begin
-			init_word <= { init_word[254:0], init_word[255] ^ init_word[1] };
+				  lfsr <= { 16'b1011000001011000,  
+								16'b1100000100111010, 
+								16'b0101000001101111, 
+								16'b1000001001110000, 
+								16'b1101101100001001, 
+								16'b0101110111110010, 
+								16'b1011100000011111, 
+								16'b1111110000011111, 
+								16'b0010111111011001, 
+								16'b1100100100110111, 
+								16'b1100100110100000, 
+								16'b1011000110011111, 
+								16'b0111001010110001, 
+								16'b0011011000011000, 
+								16'b1001101101000100, 
+								16'b0101001100100001 }; // start non zero rand
+		end else begin // Taps 255 253 250 245  -- zewro based
+			lfsr <= {             lfsr[0],		// 255
+						 lfsr[255],		
+						 lfsr[254] ^ lfsr[0],		// 253th
+						 lfsr[253:252],
+						 lfsr[251] ^ lfsr[0],
+						 lfsr[250:247],
+						 lfsr[246] ^ lfsr[0],
+						 lfsr[245:1] };
 		end
 	end
 
-	// Generation counter
+	assign init_word = lfsr;
 	
-	logic [47:0] gen_count;
-	always_ff@( posedge clk4 ) begin
-		gen_count <= gen_count + 1;
-	end
+
 
 	// Life Control state machine.
 	// Generates cell read and write addresses 
@@ -279,7 +300,7 @@ assign speaker_n = !speaker;
 	// Will complete 
 	
 	logic life_go;
-	assign life_go = short_fire || long_fire;
+	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
 	logic [9:0] read_row;
 	always@( posedge clk ) begin
 		if( reset ) begin
@@ -305,18 +326,28 @@ assign speaker_n = !speaker;
 	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 5; // write is 5 cycle delayed
 	assign we    = ( read_row >= 4 && read_row < 10'h105 ) || we_init; // write window
 	
+		// Generation counter
+	
+	logic [47:0] gen_count;
+	always_ff@( posedge clk4 ) begin
+		gen_count <= ( read_row == 10'h105 ) ? gen_count + 1 : gen_count;
+	end
+	
+	
 	// Initialization cycles
 	
-	logic [16:0] init_count;
+	logic [17:0] init_count;
 	always @(posedge clk4) begin	
 		if( reset ) begin
 			init_count <= 0;
 		end else begin
-			init_count <= ( init_count != 17'h10000 ) ? init_count + 1 : init_count;
+			init_count <= ( init_count == 18'h30000 ) ? 17'h30000 : init_count + 1;
 		end
 	end
 		
-	assign we_init = ( init_count[7:0] == 8'hff ) ? 1'b1 : 1'b0;
+	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
+	always @(posedge clk4)
+		we_init <= ( init_count[17:16] == 2'h2 && init_count[7:0] == 8'hff ) ? 1'b1 : 1'b0;
 	
 	/////////////////////////////////
 	////
