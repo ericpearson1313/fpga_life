@@ -302,7 +302,7 @@ assign speaker_n = !speaker;
 	logic life_go;
 	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
 	logic [9:0] read_row;
-	always@( posedge clk ) begin
+	always@( posedge clk4 ) begin
 		if( reset ) begin
 			read_row <= 10'h3ff;
 			sh <= 0;
@@ -322,9 +322,9 @@ assign speaker_n = !speaker;
 		end
 	end
 
-	assign raddr = ( blank_fall ) ? vraddr : read_row[7:0]; // over-ride address this cycle
+	assign raddr = ( ld ) ? vraddr : read_row[7:0]; // over-ride address this cycle
 	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 5; // write is 5 cycle delayed
-	assign we    = ( read_row >= 4 && read_row < 10'h105 ) || we_init; // write window
+	assign we    = ( read_row >= 10'h004 && read_row < 10'h105 ) || we_init; // write window
 	
 		// Generation counter
 	
@@ -341,13 +341,13 @@ assign speaker_n = !speaker;
 		if( reset ) begin
 			init_count <= 0;
 		end else begin
-			init_count <= ( init_count == 18'h30000 ) ? 17'h30000 : init_count + 1;
+			init_count <= ( init_count == 18'h30000 ) ? 18'h30000 : init_count + 1;
 		end
 	end
 		
 	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
 	always @(posedge clk4)
-		we_init <= ( init_count[17:16] == 2'h2 && init_count[7:0] == 8'hff ) ? 1'b1 : 1'b0;
+		we_init <= ( init_count[17:16] == 2'h2 && init_count[7:0] == 8'hfe ) ? 1'b1 : 1'b0;
 	
 	/////////////////////////////////
 	////
@@ -621,17 +621,11 @@ module life_engine #(
 		.q( mem_rdata )
 	);
 	
-	//always_ff@(posedge clk)
-	//begin
-	//	// Write
-	//	if(we) ram[waddr] <= ( init ) ? init_data : mem_wdata;
-	//	// Read (2 cycles)
-	//	mem_raddr <= raddr;
-	//	mem_rdata <= ram[mem_raddr];
-	//end	
-
-	always_ff@(posedge clk)
-		if( ld ) dout <= mem_rdata;
+	logic [1:0] ld_del
+;	always_ff@(posedge clk) begin
+		ld_del[1:0] <= { ld_del[0], ld };
+		if( ld_del[1] ) dout <= mem_rdata;
+	end
 		
 	// Shift register
 	logic [2:0][WIDTH-1:0] cell_array;
