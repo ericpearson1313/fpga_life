@@ -323,7 +323,7 @@ assign speaker_n = !speaker;
 	end
 
 	assign raddr = ( ld ) ? vraddr : read_row[7:0]; // over-ride address this cycle
-	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 5; // write is 5 cycle delayed
+	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 6; // write is 6 cycle delayed
 	assign we    = ( read_row >= 10'h004 && read_row < 10'h105 ) || we_init; // write window
 	
 		// Generation counter
@@ -631,9 +631,11 @@ module life_engine #(
 	logic [2:0][WIDTH-1:0] cell_array;
 	
 	// Shift register input
+	logic [1:0] sh_del;
 	always_ff@(posedge clk)
 	begin
-		cell_array[2:0] <= (sh) ? { cell_array[1:0], mem_rdata } : cell_array[2:0];
+		sh_del <= { sh_del[0], sh };
+		cell_array[2:0] <= (sh_del[1]) ? { cell_array[1:0], mem_rdata } : cell_array[2:0];
 	end
 
 	logic [255:0][1:0] add3;
@@ -662,10 +664,10 @@ module life_engine #(
 	end
 	
 	always @(posedge clk) 
-		if( sh ) add3_q <= add3;
+		if( sh_del[1] ) add3_q <= add3;
 		
 	always_ff@(posedge clk)
-		if( sh ) mem_wdata <= cell_next;
+		if( sh_del[1] ) mem_wdata <= cell_next;
 
 endmodule
 
