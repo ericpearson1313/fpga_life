@@ -326,11 +326,32 @@ assign speaker_n = !speaker;
 	assign ld	 = ( read_row == 10'h3fe && vid_pend ) ? 1'b1 : 1'b0;
 	assign sh    = 1;
 	
-		// Generation counter
+	// Generation counters
 	
 	logic [47:0] gen_count;
 	always_ff@( posedge clk4 ) begin
 		gen_count <= ( read_row == 10'h105 ) ? gen_count + 1 : gen_count;
+	end
+	
+	logic [25:0] second_count;	// clk = 48Mhz osc
+	logic 	    second_tick; // 1 pulse / sec
+	always_ff @(posedge clk) begin
+		second_count <= ( second_count == 26'd48_000_000 - 1 ) ? 26'd0 : second_count + 1;
+		second_tick <= ( second_count == 26'd0 ) ? 1'b1 : 1'b0;
+	end
+	
+	logic [23:0] genpersec_latch;
+	logic [23:0] genpersec_count;
+	logic [3:0] sec_del;
+	always_ff @(posedge clk4) begin
+		sec_del[3:0] <= { sec_del[2:0], second_tick };
+		if( sec_del[2] && !sec_del[3] ) begin // second pulse rising edge
+			genpersec_latch <= genpersec_count;
+			genpersec_count <= ( read_row == 10'h105 ) ? 1 : 0;
+		end else begin
+			genpersec_latch <= genpersec_latch;
+			genpersec_count <= ( read_row == 10'h105 ) ? genpersec_count + 1 : genpersec_count;
+		end
 	end
 	
 	
@@ -454,55 +475,56 @@ assign speaker_n = !speaker;
 	// the serial interface runs at 6 Mhz (max 7 Mhz!)
 	// we assigned c0 the output diff pair clock to this interface.
 	
-	//logic [11:0] 	flash_addr; // 32 bit word address, 16Kbytes total flash for M04
-	//logic 			flash_read;
-	//logic				flash_data;
-	//logic 			flash_wait;
-	//logic 			flash_valid;
-	//ufm_flash _flash (
-	//	.clock						( clk_out 			 ), // 6 Mhz
-	//	.avmm_data_addr			( flash_addr[11:0] ), // word address 
-	//	.avmm_data_read			( flash_read 		 ),
-	//	.avmm_data_readdata		( flash_data 		 ),
-	//	.avmm_data_waitrequest	( flash_wait 		 ),
-	//	.avmm_data_readdatavalid( flash_valid 		 ),
-	//	.avmm_data_burstcount	( 128 * 32 			 ), // 4K bit burst
-	//	.reset_n						( !reset 			 )
-	//);	
+	logic [11:0] 	flash_addr; // 32 bit word address, 16Kbytes total flash for M04
+	logic 			flash_read;
+	logic				flash_data;
+	logic 			flash_wait;
+	logic 			flash_valid;
+	ufm_flash _flash (
+		.clock						( clk_out 			 ), // 6 Mhz
+		.avmm_data_addr			( flash_addr[11:0] ), // word address 
+		.avmm_data_read			( flash_read 		 ),
+		.avmm_data_readdata		( flash_data 		 ),
+		.avmm_data_waitrequest	( flash_wait 		 ),
+		.avmm_data_readdatavalid( flash_valid 		 ),
+		.avmm_data_burstcount	( 128 * 32 			 ), // 4K bit burst
+		.reset_n						( !reset 			 )
+	);	
 	
 	// Text Overlay (from flash rom)
 	logic text_ovl;
 	logic [3:0] text_color;
-	//ext_overlay _text
-	//
-	//	.clk( hdmi_clk  ),
-	//	.reset( reset ),
-	//	.blank( blank ),
-	//	.hsync( hsync ),
-	//	.vsync( vsync ),
-	//	// Overlay output bit for ORing
-	//	.overlay( text_ovl ),
-	//	.color( text_color ),
-	//	// Avalon bus to init font and text rams
-	//	.flash_clock( clk_out 			 ), // 6 Mhz
-	//	.flash_addr ( flash_addr[11:0] ), // word address 
-	//	.flash_read ( flash_read 		 ),
-	//	.flash_data ( flash_data 		 ),
-	//	.flash_wait ( flash_wait 		 ),
-	//	.flash_valid( flash_valid 		 )
-	//;
+	text_overlay _text
+	(
+		.clk( hdmi_clk  ),
+		.reset( reset ),
+		.blank( blank ),
+		.hsync( hsync ),
+		.vsync( vsync ),
+		// Overlay output bit for ORing
+		.overlay( text_ovl ),
+		.color( text_color ),
+		// Avalon bus to init font and text rams
+		.flash_clock( clk_out 			 ), // 6 Mhz
+		.flash_addr ( flash_addr[11:0] ), // word address 
+		.flash_read ( flash_read 		 ),
+		.flash_data ( flash_data 		 ),
+		.flash_wait ( flash_wait 		 ),
+		.flash_valid( flash_valid 		 )
+	);
 
 	
 	// Overlay Text - Dynamic
-	logic [4:0] id_str;
+	logic [6:0] id_str;
 	string_overlay #(.LEN(21)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('h09), .out( id_str[0]), .str( "Conway's Game of LIFE" ) );
 	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d58), .out( id_str[1]), .in( gen_count[47:0] ) );
    //bin_overlay    #(.LEN(1 )) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char), .x('h46),.y('h09), .out( id_str[2]), .in( disp_id == 32'h0E96_0001 ) );
-	string_overlay #(.LEN(12)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d120),.y('d59), .out( id_str[3]), .str( "ERIC PEARSON" ) );
+	//string_overlay #(.LEN(14)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d119),.y('d58), .out( id_str[3]), .str( "commit 0123abc" ) );
+	hex_overlay    #(.LEN(6 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d54), .out( id_str[4]), .in( genpersec_latch[23:0] ) );
+	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d56), .out( id_str[5]), .str( "Total Generations" ) );
+	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d52), .out( id_str[6]), .str( "Generations/sec" ) );
 
-	
-	// Merge overlays
-	logic overlay;
+
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
 						  (|id_str  ) ;
 	
