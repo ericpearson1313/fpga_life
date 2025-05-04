@@ -1,7 +1,8 @@
 # fpga_life
 A FPGA implementation of Conways's game of life. 
 
-A million generations-per-second on a 256x256 grid.
+Approx 1 million generations of life per second (256x256).
+![life hdmi](life_gen.jpeg "Life Generation with HDMI display")
 
 ## Background
 
@@ -16,10 +17,10 @@ If all cells die you loose the game of life.
 I found conway's life as a kid and was always interested in the active patterns people had discovered. The patterns have been shown remarkable capable, ie: like simulating a computer as patterns.
 I've implemented life in many ways in software over the years, as a fun excersize.
 During a graduate vlsi design course I was able to propose, and see through a group project to implement a vlsi chip to implement life. 
-I think I might still have the actual chips in a drawer somewher. I'd have to look up the technical paper, 
+I think I might still have the actual chips in a drawer somewhere (plot shown below). I'd have to look up the technical paper, 
 but think it was 1000 generations per second for a similar gid size using 32 of these chips.
 
-(insert micro photograph of chip)
+![vlsi life chip plot](life_chip.jpeg "WTLCH - Waterloo Life Chip")
 
 Over my career I've improved the releavant design techniques. I thought I would revisit Life, you know, for fun.
 
@@ -40,11 +41,11 @@ A 2nd fpag board was built partially populated, with just the system resources a
 10M25 was used to test the cross compatibility between the 2 different sizes. Although initially things fit on both fpga's, the 10M04 is 97% utilized 
 so anticipate only using the 10M25 as features are added. I should also be able to extend array size and increase performance.
 
+![fpga dev board](life_board.jpeg "A little FPGA board I designed")
+
 ## Implementation
 
 Re-using the platform code for clocking, wvga hdmi/dvi video and text overlay allows focus on the core algorithm implementation.
-
-(block diagram of hardware with datapaths.)
 
 The code is implemented in system verilog.
 
@@ -53,6 +54,19 @@ The data path needed to support both the read write to maintain 1 row/cycle rate
 
 HDMI video output is accomplisehd by making a single read of a full row on each active scanline of the video output row, and shifted the read data out during that that video row. 
 
+![Datapath Whiteboard](life_datapath.jpeg "Life fpga design datapath (whiteboard)")
+
+## Performance
+
+Here's a picture of the display showing over 700K generations per second and lots of room for increased performance.
+
+(hex b233e = 729,918 generations/sec)
+
+![Maximum speed](life_speed.jpeg "Life at over 700,000 generations per second")
+
+Would love to work on and even 1000x faster version some day.....
+
+Eric
 
 
 
