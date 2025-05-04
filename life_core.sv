@@ -228,7 +228,7 @@ assign speaker_n = !speaker;
 		.waddr( waddr ),
 		.we( we ),
 		.sh( sh ),
-		.ld( ld ),
+		.ld( ld ),  // loads addresssed word into dout port for the video scan
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
 		.init( we_init ),
 		.init_data( init_word ) // 256 bit
@@ -302,29 +302,29 @@ assign speaker_n = !speaker;
 	logic life_go;
 	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
 	logic [9:0] read_row;
+	logic vid_pend;
 	always@( posedge clk4 ) begin
 		if( reset ) begin
-			read_row <= 10'h3ff;
-			sh <= 0;
-			ld <= 0;
+			read_row <= 10'h3fe; // -2 idle state
+			vid_pend <= 0;
 		end else begin
-			ld <= blank_fall;
-			sh <= !blank_fall;
-			if( blank_fall ) begin // over-ride this cycle
-				read_row <= read_row; // repeat it again
-			end else if( read_row == 10'h3ff ) begin
-				read_row <= ( life_go ) ? 10'h000 : 10'h3ff;
-			end else if ( read_row == 10'h105 ) begin
-				read_row <= ( life_go ) ? 10'h006 : 10'h3ff;
+			if( read_row == 10'h3fe ) begin
+				read_row <= ( life_go ) ? 10'h3ff : 10'h3fe; // when go starts at -1 ('h3ff)
+			end else if ( read_row == 10'h105 ) begin  // counts up to 105 giving 256+1lead+6pipe
+				read_row <= ( life_go & !vid_pend ) ? 10'h3ff : 10'h3fe; // restart if go unless vid pend
 			end else begin
 				read_row <= read_row + 1;
 			end
+			// handle video pend flag, rise on blank fall, fall when we see an idle state
+			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == 10'h3fe ) ? 1'b0 : vid_pend;
 		end
 	end
 
-	assign raddr = ( ld ) ? vraddr : read_row[7:0]; // over-ride address this cycle
+	assign raddr = ( read_row == 10'h3fe ) ? vraddr : read_row[7:0]; // over-ride address this cycle
 	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 6; // write is 6 cycle delayed
-	assign we    = ( read_row >= 10'h004 && read_row < 10'h105 ) || we_init; // write window
+	assign we    = ( read_row >= 10'h006 && read_row <= 10'h105 ) || we_init; // write window
+	assign ld	 = ( read_row == 10'h3fe && vid_pend ) ? 1'b1 : 1'b0;
+	assign sh    = 0;
 	
 		// Generation counter
 	
