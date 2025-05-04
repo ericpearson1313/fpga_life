@@ -656,9 +656,9 @@ module life_engine #(
 		end
 		// Calculate cell state
 		for( int ii = 0; ii < 256; ii++ ) begin
-			cell_next[ii] = ((( add9[ii]==4 ) &&  cell_array[1][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-								  (( add9[ii]==3 ) &&  cell_array[1][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-								  (( add9[ii]==3 ) && !cell_array[1][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+			cell_next[ii] = ((( add9[ii]==4 ) &&  cell_array[2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+								  (( add9[ii]==3 ) &&  cell_array[2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+								  (( add9[ii]==3 ) && !cell_array[2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
 																		  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 		end
 	end
