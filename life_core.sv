@@ -324,7 +324,7 @@ assign speaker_n = !speaker;
 	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 6; // write is 6 cycle delayed
 	assign we    = ( read_row >= 10'h006 && read_row <= 10'h105 ) || we_init; // write window
 	assign ld	 = ( read_row == 10'h3fe && vid_pend ) ? 1'b1 : 1'b0;
-	assign sh    = 0;
+	assign sh    = 1;
 	
 		// Generation counter
 	
