@@ -221,6 +221,7 @@ assign speaker_n = !speaker;
 	logic ld; // latch a row into dout (from last cycle)
 	logic we_init; // selects init_word as we data source 
 	
+	
 	life_engine _life_engine (
 		.clk  ( clk4 ),
 		.reset( reset ),
@@ -598,9 +599,10 @@ endmodule
 
 
 module life_engine #(
-	WIDTH = 256,
-	DEPTH = 256,
-	DBITS = 8
+	WIDTH = 256,	// Datapath widthe
+	DEPTH = 256,	// memory depth
+	DBITS = 8,		// depth address bitwidth
+	GENS  = 1		// hardware Generations per pass
 ) (
 	input clk,
 	input reset,
@@ -629,9 +631,6 @@ module life_engine #(
 	logic [WIDTH-1:0] ram [0:DEPTH-1];
 	logic [WIDTH-1:0] mem_wdata;
 	logic [WIDTH-1:0] mem_rdata;
-	logic [WIDTH-1:0] cell_next;
-	logic [7:0] mem_raddr;
-
 
 	// Fully registered 2 port ram
 	cell_ram _cell_ram (
@@ -649,47 +648,67 @@ module life_engine #(
 		if( ld_del[1] ) dout <= mem_rdata;
 	end
 		
-	// Shift register
-	logic [2:0][WIDTH-1:0] cell_array;
+	// Shift register arrays
+	logic [0:GENS-1][2:0][WIDTH-1:0] cell_array;
 	
 	// Shift register input
 	logic [1:0] sh_del;
+	logic [0:GENS-1][WIDTH-1:0] cell_next; // new generation input
 	always_ff@(posedge clk)
 	begin
+		// delay shift for global reg enable
 		sh_del <= { sh_del[0], sh };
-		cell_array[2:0] <= (sh_del[1]) ? { cell_array[1:0], mem_rdata } : cell_array[2:0];
+		
+		// Cell shift register array is updated
+		if( sh_del[1] ) begin
+			cell_array[0][2:1] <= cell_array[0][1:0];
+			cell_array[0][0]   <= mem_rdata;
+			for( int gg = 1; gg < GENS; gg++ ) begin
+				cell_array[gg][2:1] <= cell_array[gg][1:0];
+				cell_array[gg][0]   <= cell_next[gg-1];
+			end
+		end else begin // hold
+			cell_array <= cell_array;
+		end
 	end
 
-	logic [255:0][1:0] add3;
-	logic [255:0][1:0] add3_q;
-	logic [255:0][3:0] add9;
+	logic [0:GENS-1][WIDTH-1:0][1:0] add3;
+	logic [0:GENS-1][WIDTH-1:0][1:0] add3_q;
+	logic [0:GENS-1][WIDTH-1:0][3:0] add9;
+
 	always_comb begin : _life_cells
 		// Form add3 array
-		for( int ii = 0; ii < 256; ii++ ) begin
-			add3[ii] =  { 1'b0, cell_array[2][ii] } +
-							{ 1'b0, cell_array[1][ii] } +
-							{ 1'b0, cell_array[0][ii] } ;
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int ii = 0; ii < WIDTH; ii++ ) begin
+			add3[gg][ii] =  { 1'b0, cell_array[gg][2][ii] } +
+								 { 1'b0, cell_array[gg][1][ii] } +
+								 { 1'b0, cell_array[gg][0][ii] } ;
 		end
 		// Form add9 array (adding 3 x add3 values)
-		for( int ii = 0; ii < 256; ii++ ) begin
-			add9[ii] =  { 2'b00, (ii==255)?add3_q[0]:add3_q[ii+1] } +
-							{ 2'b00,                     add3_q[ii+0] } +
-							{ 2'b00, (ii==0)?add3_q[255]:add3_q[ii-1] } ;
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int ii = 0; ii < WIDTH; ii++ ) begin
+				add9[gg][ii] =  { 2'b00, (ii==255)?add3_q[gg][0]:add3_q[gg][ii+1] } +
+									 { 2'b00,                         add3_q[gg][ii+0] } +
+									 { 2'b00, (ii==0)?add3_q[gg][255]:add3_q[gg][ii-1] } ;
 		end
 		// Calculate cell state
-		for( int ii = 0; ii < 256; ii++ ) begin
-			cell_next[ii] = ((( add9[ii]==4 ) &&  cell_array[2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-								  (( add9[ii]==3 ) &&  cell_array[2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-								  (( add9[ii]==3 ) && !cell_array[2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-																		  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int ii = 0; ii < WIDTH; ii++ ) begin
+				cell_next[gg][ii] = ((( add9[gg][ii]==4 ) &&  cell_array[gg][2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+											(( add9[gg][ii]==3 ) &&  cell_array[gg][2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+											(( add9[gg][ii]==3 ) && !cell_array[gg][2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 		end
 	end
-	
+
+	// GENS * WIDTH register
+	// global reg enable wire
 	always @(posedge clk) 
 		if( sh_del[1] ) add3_q <= add3;
 		
+	// Final Generation output reg
 	always_ff@(posedge clk)
-		if( sh_del[1] ) mem_wdata <= cell_next;
+		if( sh_del[1] ) mem_wdata <= cell_next[GENS-1];
 
 endmodule
 
