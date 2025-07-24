@@ -214,7 +214,7 @@ assign speaker_n = !speaker;
 	parameter WIDTH = 256;	// Datapath width
 	parameter DEPTH = 256;	// memory depth
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 1;		// hardware Generations per pass
+	parameter GENS  = 10;		// hardware Generations per pass
 
 	// Integrate the life engine
 	logic [WIDTH-1:0] init_word;
