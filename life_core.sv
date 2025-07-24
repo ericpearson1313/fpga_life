@@ -310,20 +310,22 @@ assign speaker_n = !speaker;
 	// Min 2 cycles for life_go as maybe over-ridden
 	// Will complete 
 	
-	localparam IDLE_COUNT = WIDTH - 1 - GENS;
+	localparam IDLE_COUNT  = WIDTH - GENS - 1;
 	localparam START_COUNT = WIDTH - GENS;
-	localparam PIPE_DEPTH = 3 + GENS * 3;
-	localparam DONE_COUNT = WIDTH + PIPE_DEPTH - 1;
+	localparam PIPE_DEPTH  = 3 + GENS * 3;
+	localparam DONE_COUNT  = WIDTH + PIPE_DEPTH - 1;
 
 	
 	logic life_go;
 	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
-	logic [DBITS-1+1:0] read_row;
+	logic [DBITS:0] read_row; 
+	logic [DBITS-1:0] base;
 	logic vid_pend;
 	always@( posedge clk4 ) begin
 		if( reset ) begin
 			read_row <= IDLE_COUNT; // idle state
 			vid_pend <= 0;
+			base <= 0; // base ram addr
 		end else begin
 			if( read_row == IDLE_COUNT ) begin
 				read_row <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
@@ -334,11 +336,13 @@ assign speaker_n = !speaker;
 			end
 			// handle video pend flag, rise on blank fall, fall when we see an idle state
 			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
+			// Increment base when finished gen
+			base <= ( read_row == DONE_COUNT ) ? base + GENS : base; 
 		end
 	end
 
-	assign raddr = ( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]; // over-ride address this cycle
-	assign waddr = ( we_init ) ? init_count[2*DBITS-1-:DBITS] : read_row[DBITS-1:0] - PIPE_DEPTH; // write is 6 cycle delayed
+	assign raddr = base + ( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]; // over-ride address this cycle
+	assign waddr = ( we_init ) ? init_count[2*DBITS-1-:DBITS] : base + GENS + read_row[DBITS-1:0] - PIPE_DEPTH; // write is 6 cycle delayed
 	assign we    = ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
 	assign ld	 = ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
 	assign sh    = 1;
