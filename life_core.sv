@@ -211,18 +211,28 @@ assign speaker_n = !speaker;
 //
 /////////////////////	
 
+	parameter WIDTH = 256;	// Datapath width
+	parameter DEPTH = 256;	// memory depth
+	parameter DBITS = 8;		// depth address bitwidth
+	parameter GENS  = 1;		// hardware Generations per pass
+
 	// Integrate the life engine
-	logic [255:0] init_word;
-	logic [255:0] life_word; // latched read word
-	logic [7:0] raddr;
-	logic [7:0] waddr;
+	logic [WIDTH-1:0] init_word;
+	logic [WIDTH-1:0] life_word; // latched read word
+	logic [DBITS-1:0] raddr;
+	logic [DBITS-1:0] waddr;
 	logic we; // write enable of life calc output or current init word
 	logic sh; // shift in a row (from last cycle read)
 	logic ld; // latch a row into dout (from last cycle)
 	logic we_init; // selects init_word as we data source 
 	
 	
-	life_engine _life_engine (
+	life_engine#(
+		.WIDTH( WIDTH ),
+		.DEPTH( DEPTH ),
+		.DBITS( DBITS ),
+		.GENS(  GENS  )
+		)  _life_engine (
 		.clk  ( clk4 ),
 		.reset( reset ),
 		.raddr( raddr ),
@@ -238,7 +248,7 @@ assign speaker_n = !speaker;
 	// Generate Init word (lfsr for now)
 	// LFSR from: https://datacipy.elektroniche.cz/lfsr_table.pdf
 	
-	logic [255:0] lfsr;
+	logic [WIDTH-1:0] lfsr;
 	always_ff @(posedge clk4 ) begin
 		if( reset ) begin
 				  lfsr <= { 16'b1011000001011000,  
@@ -284,7 +294,7 @@ assign speaker_n = !speaker;
 	// suggest maybe true dual port and use the 2nd write port from a 256bit write reg.
 	
 	// Signalsw from video clock domain
-	logic [7:0] vraddr; // video row read addr ASYNC, but stable before use in clk4 domain
+	logic [DBITS-1:0] vraddr; // video row read addr ASYNC, but stable before use in clk4 domain
 	logic video_blank;
 	
 	// Blank CC regs and faling pulse detector and ld flag reg.
@@ -300,38 +310,46 @@ assign speaker_n = !speaker;
 	// Min 2 cycles for life_go as maybe over-ridden
 	// Will complete 
 	
+	localparam IDLE_COUNT = WIDTH - 1 - GENS;
+	localparam START_COUNT = WIDTH - GENS;
+	localparam PIPE_DEPTH = 3 + GENS * 3;
+	localparam DONE_COUNT = WIDTH + PIPE_DEPTH - 1;
+
+	
 	logic life_go;
 	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
-	logic [9:0] read_row;
+	logic [DBITS-1+1:0] read_row;
 	logic vid_pend;
 	always@( posedge clk4 ) begin
 		if( reset ) begin
-			read_row <= 10'h3fe; // -2 idle state
+			read_row <= IDLE_COUNT; // idle state
 			vid_pend <= 0;
 		end else begin
-			if( read_row == 10'h3fe ) begin
-				read_row <= ( life_go ) ? 10'h3ff : 10'h3fe; // when go starts at -1 ('h3ff)
-			end else if ( read_row == 10'h105 ) begin  // counts up to 105 giving 256+1lead+6pipe
-				read_row <= ( life_go & !vid_pend ) ? 10'h3ff : 10'h3fe; // restart if go unless vid pend
+			if( read_row == IDLE_COUNT ) begin
+				read_row <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
+			end else if ( read_row == DONE_COUNT ) begin  // counts up to 105 giving 256+1lead+6pipe
+				read_row <= ( life_go & !vid_pend ) ? START_COUNT : IDLE_COUNT; // restart if go unless vid pend
 			end else begin
 				read_row <= read_row + 1;
 			end
 			// handle video pend flag, rise on blank fall, fall when we see an idle state
-			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == 10'h3fe ) ? 1'b0 : vid_pend;
+			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 		end
 	end
 
-	assign raddr = ( read_row == 10'h3fe ) ? vraddr : read_row[7:0]; // over-ride address this cycle
-	assign waddr = ( we_init ) ? init_count[15:8] : read_row[7:0] - 6; // write is 6 cycle delayed
-	assign we    = ( read_row >= 10'h006 && read_row <= 10'h105 ) || we_init; // write window
-	assign ld	 = ( read_row == 10'h3fe && vid_pend ) ? 1'b1 : 1'b0;
+	assign raddr = ( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]; // over-ride address this cycle
+	assign waddr = ( we_init ) ? init_count[2*DBITS-1-:DBITS] : read_row[DBITS-1:0] - PIPE_DEPTH; // write is 6 cycle delayed
+	assign we    = ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
+	assign ld	 = ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
 	assign sh    = 1;
 	
 	// Generation counters
 	
+	logic        gen_tick;
 	logic [47:0] gen_count;
 	always_ff@( posedge clk4 ) begin
-		gen_count <= ( read_row == 10'h105 ) ? gen_count + 1 : gen_count;
+		gen_tick <= ( read_row == DONE_COUNT ) ? 1'b1 : 1'b0;
+		gen_count <= ( gen_tick ) ? gen_count + GENS : gen_count;
 	end
 	
 	logic [25:0] second_count;	// clk = 48Mhz osc
@@ -348,10 +366,10 @@ assign speaker_n = !speaker;
 		sec_del[3:0] <= { sec_del[2:0], second_tick };
 		if( sec_del[2] && !sec_del[3] ) begin // second pulse rising edge
 			genpersec_latch <= genpersec_count;
-			genpersec_count <= ( read_row == 10'h105 ) ? 1 : 0;
+			genpersec_count <= ( gen_tick ) ? 1 : 0;
 		end else begin
 			genpersec_latch <= genpersec_latch;
-			genpersec_count <= ( read_row == 10'h105 ) ? genpersec_count + 1 : genpersec_count;
+			genpersec_count <= ( gen_tick ) ? genpersec_count + 1 : genpersec_count;
 		end
 	end
 	
