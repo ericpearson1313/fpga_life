@@ -297,6 +297,7 @@ assign speaker_n = !speaker;
 	
 	// Signalsw from video clock domain
 	logic [DBITS-1:0] vraddr; // video row read addr ASYNC, but stable before use in clk4 domain
+	logic [DBITS-1:0] vraddr_cc; // clk version, to avaoid propagation of false paths
 	logic video_blank;
 	
 	// Blank CC regs and faling pulse detector and ld flag reg.
@@ -343,9 +344,12 @@ assign speaker_n = !speaker;
 		end
 	end
 
+	logic [DBITS-1:0] adj_read_row;
 	always_ff @( posedge clk4 ) begin
-		raddr <= base + (( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]); // over-ride address this cycle
-		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (base + GENS + read_row[DBITS-1:0] - PIPE_DEPTH); // write is 6 cycle delayed
+		adj_read_row <= read_row[DBITS-1:0] + base;
+		vraddr_cc <= vraddr + base;
+		raddr <= ( read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
+		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH); // write is 6 cycle delayed
 		we    <= ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
 		ld	 	<= ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
 		sh    <= 1;
@@ -648,11 +652,6 @@ module life_engine #(
 	
 );
 
-////////////////
-
-////////////////
-
-	
 	// Memory
 	
 	logic [WIDTH-1:0] ram [0:DEPTH-1];
