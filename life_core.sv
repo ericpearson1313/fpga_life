@@ -87,7 +87,7 @@ module life_core
 	assign digio = 7'bzzz_zzzz;
 	
 	// Rs232
-	assign tx2323 = rx232; // wire through
+	assign tx232 = rx232; // wire through
 	
 	// Safe the High Voltage 
 	assign lt3420_charge = 1'b0;
@@ -209,12 +209,14 @@ assign speaker_n = !speaker;
 //
 // Life Engine
 //
-/////////////////////	
-
+/////////////////////
+/////////////////////////////
 	parameter WIDTH = 256;	// Datapath width
 	parameter DEPTH = 256;	// memory depth
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 10;		// hardware Generations per pass
+	parameter GENS  = 10;	// hardware Generations per pass
+/////////////////////////////
+
 
 	// Integrate the life engine
 	logic [WIDTH-1:0] init_word;
@@ -300,7 +302,7 @@ assign speaker_n = !speaker;
 	// Blank CC regs and faling pulse detector and ld flag reg.
 	logic [3:0] blank_cc;
 	logic blank_fall;
-	always @(posedge clk4) begin
+	always_ff @(posedge clk4) begin
 		blank_cc <= { blank_cc[2:0], video_blank };
 		blank_fall <= blank_cc[3] &!blank_cc[2];
 	end
@@ -312,7 +314,7 @@ assign speaker_n = !speaker;
 	
 	localparam IDLE_COUNT  = WIDTH - GENS - 1;
 	localparam START_COUNT = WIDTH - GENS;
-	localparam PIPE_DEPTH  = 3 + GENS * 3;
+	localparam PIPE_DEPTH  = 4 + GENS * 3;
 	localparam DONE_COUNT  = WIDTH + PIPE_DEPTH - 1;
 
 	
@@ -321,11 +323,11 @@ assign speaker_n = !speaker;
 	logic [DBITS:0] read_row; 
 	logic [DBITS-1:0] base;
 	logic vid_pend;
-	always@( posedge clk4 ) begin
+	always_ff @( posedge clk4 ) begin
 		if( reset ) begin
 			read_row <= IDLE_COUNT; // idle state
 			vid_pend <= 0;
-			base <= 0; // base ram addr
+			base     <= 0; // base ram addr
 		end else begin
 			if( read_row == IDLE_COUNT ) begin
 				read_row <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
@@ -337,15 +339,17 @@ assign speaker_n = !speaker;
 			// handle video pend flag, rise on blank fall, fall when we see an idle state
 			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 			// Increment base when finished gen
-			base <= ( read_row == DONE_COUNT ) ? base + GENS : base; 
+			base <= ( read_row == DONE_COUNT ) ? (base + GENS) : base; 
 		end
 	end
 
-	assign raddr = base + ( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]; // over-ride address this cycle
-	assign waddr = ( we_init ) ? init_count[2*DBITS-1-:DBITS] : base + GENS + read_row[DBITS-1:0] - PIPE_DEPTH; // write is 6 cycle delayed
-	assign we    = ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
-	assign ld	 = ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
-	assign sh    = 1;
+	always_ff @( posedge clk4 ) begin
+		raddr <= base + (( read_row == IDLE_COUNT ) ? vraddr : read_row[DBITS-1:0]); // over-ride address this cycle
+		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (base + GENS + read_row[DBITS-1:0] - PIPE_DEPTH); // write is 6 cycle delayed
+		we    <= ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
+		ld	 	<= ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
+		sh    <= 1;
+	end
 	
 	// Generation counters
 	
@@ -547,9 +551,9 @@ assign speaker_n = !speaker;
 	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d56), .out( id_str[5]), .str( "Total Generations" ) );
 	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d52), .out( id_str[6]), .str( "Generations/sec" ) );
 
-
+	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
-						  (|id_str  ) ;
+						  (|id_str  ) ; // reduction OR of the id string bits.
 	
 	// Overlay Color
 	logic [7:0] overlay_red, overlay_green, overlay_blue;
@@ -572,13 +576,14 @@ assign speaker_n = !speaker;
 
 	// video encoder
 	// Simultaneous HDMI and DVI
+
 	logic [7:0] hdmi2_data;
 	logic [7:0] dvi_data;
 	video_encoder _encode2
 	(
 		.clk  ( hdmi_clk  ),
 		.clk5 ( hdmi_clk5 ),
-		.reset( reset | charge ),  // battery limit during charging
+		.reset( reset ),  // battery limit during charging
 		.blank( blank ),
 		.hsync( hsync ),
 		.vsync( vsync ),
