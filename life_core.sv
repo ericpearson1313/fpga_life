@@ -227,7 +227,7 @@ assign speaker_n = !speaker;
 	logic sh; // shift in a row (from last cycle read)
 	logic ld; // latch a row into dout (from last cycle)
 	logic we_init; // selects init_word as we data source 
-	
+	logic init;	
 	
 	life_engine#(
 		.WIDTH( WIDTH ),
@@ -243,7 +243,7 @@ assign speaker_n = !speaker;
 		.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
-		.init( we_init ),
+		.init( init ),
 		.init_data( init_word ) // 256 bit
 	);
 	
@@ -313,10 +313,10 @@ assign speaker_n = !speaker;
 	// Min 2 cycles for life_go as maybe over-ridden
 	// Will complete 
 	
-	localparam IDLE_COUNT  = WIDTH - GENS - 1;
-	localparam START_COUNT = WIDTH - GENS;
+	localparam IDLE_COUNT  = (2<<DBITS)-GENS-1;
+	localparam START_COUNT = (2<<DBITS)-GENS;
 	localparam PIPE_DEPTH  = 4 + GENS * 3;
-	localparam DONE_COUNT  = WIDTH + PIPE_DEPTH - 1;
+	localparam DONE_COUNT  = WIDTH + GENS + PIPE_DEPTH - 1;
 
 	
 	logic life_go;
@@ -345,13 +345,15 @@ assign speaker_n = !speaker;
 	end
 
 	logic [DBITS-1:0] adj_read_row;
+
 	always_ff @( posedge clk4 ) begin
 		adj_read_row <= read_row[DBITS-1:0] + base;
 		vraddr_cc <= vraddr + base;
 		raddr <= ( read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
 		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH); // write is 6 cycle delayed
 		we    <= ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
-		ld	 	<= ( read_row == START_COUNT && vid_pend ) ? 1'b1 : 1'b0;
+		ld	 	<= ( read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
+		init	<= we_init;
 		sh    <= 1;
 	end
 	
@@ -371,8 +373,8 @@ assign speaker_n = !speaker;
 		second_tick <= ( second_count == 26'd0 ) ? 1'b1 : 1'b0;
 	end
 	
-	logic [23:0] genpersec_latch;
-	logic [23:0] genpersec_count;
+	logic [31:0] genpersec_latch;
+	logic [31:0] genpersec_count;
 	logic [3:0] sec_del;
 	always_ff @(posedge clk4) begin
 		sec_del[3:0] <= { sec_del[2:0], second_tick };
@@ -381,7 +383,7 @@ assign speaker_n = !speaker;
 			genpersec_count <= ( gen_tick ) ? 1 : 0;
 		end else begin
 			genpersec_latch <= genpersec_latch;
-			genpersec_count <= ( gen_tick ) ? genpersec_count + 1 : genpersec_count;
+			genpersec_count <= ( gen_tick ) ? genpersec_count + GENS : genpersec_count;
 		end
 	end
 	
@@ -551,7 +553,7 @@ assign speaker_n = !speaker;
 	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d58), .out( id_str[1]), .in( gen_count[47:0] ) );
    //bin_overlay    #(.LEN(1 )) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char), .x('h46),.y('h09), .out( id_str[2]), .in( disp_id == 32'h0E96_0001 ) );
 	//string_overlay #(.LEN(14)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d119),.y('d58), .out( id_str[3]), .str( "commit 0123abc" ) );
-	hex_overlay    #(.LEN(6 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d54), .out( id_str[4]), .in( genpersec_latch[23:0] ) );
+	hex_overlay    #(.LEN(8 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d54), .out( id_str[4]), .in( genpersec_latch[31:0] ) );
 	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d56), .out( id_str[5]), .str( "Total Generations" ) );
 	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d52), .out( id_str[6]), .str( "Generations/sec" ) );
 
