@@ -315,7 +315,7 @@ assign speaker_n = !speaker;
 	
 	localparam IDLE_COUNT  = (2<<DBITS)-GENS-1;
 	localparam START_COUNT = (2<<DBITS)-GENS;
-	localparam PIPE_DEPTH  = 4 + GENS * 3;
+	localparam PIPE_DEPTH  = 2 + 2 + GENS * 3 + 1;
 	localparam DONE_COUNT  = WIDTH + GENS + PIPE_DEPTH - 1;
 
 	
@@ -327,8 +327,7 @@ assign speaker_n = !speaker;
 	always_ff @( posedge clk4 ) begin
 		if( reset ) begin
 			read_row <= IDLE_COUNT; // idle state
-			vid_pend <= 0;
-			base     <= 0; // base ram addr
+			base     <= 0; // base ram ddr
 		end else begin
 			if( read_row == IDLE_COUNT ) begin
 				read_row <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
@@ -337,24 +336,32 @@ assign speaker_n = !speaker;
 			end else begin
 				read_row <= read_row + 1;
 			end
-			// handle video pend flag, rise on blank fall, fall when we see an idle state
-			vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : ( read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 			// Increment base when finished gen
 			base <= ( read_row == DONE_COUNT ) ? (base + GENS) : base; 
 		end
 	end
+	
+	// address pipe stage 1
 
 	logic [DBITS-1:0] adj_read_row;
-
+	logic [DBITS:0] del_read_row;
 	always_ff @( posedge clk4 ) begin
 		adj_read_row <= read_row[DBITS-1:0] + base;
 		vraddr_cc <= vraddr + base;
-		raddr <= ( read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
-		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH); // write is 6 cycle delayed
-		we    <= ( read_row >= PIPE_DEPTH && read_row <= DONE_COUNT ) || we_init; // write window
-		ld	 	<= ( read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
+		del_read_row <= read_row;
+
+	end		
+	
+	// Address pipe stage 2
+	always_ff @( posedge clk4 ) begin
+		raddr <= ( del_read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
+		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH + 2); // write is 6 cycle delayed
+		we    <= ( del_read_row >= PIPE_DEPTH && del_read_row <= DONE_COUNT ) || we_init; // write window
+		ld	 	<= ( del_read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
 		init	<= we_init;
 		sh    <= 1;
+		// handle video pend flag, rise on blank fall, fall when we see an idle state
+		vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : (del_read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 	end
 	
 	// Generation counters
