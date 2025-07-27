@@ -1,8 +1,11 @@
 # fpga_life
 A FPGA implementation of Conways's game of life. 
 
+
 Approx 1 million generations of life per second (256x256).
 ![life hdmi](life_gen.jpeg "Life Generation with HDMI display")
+
+Update below
 
 ## Background
 
@@ -68,6 +71,18 @@ Would love to work on and even 1000x faster version some day.....
 
 Eric
 
+## Update: 
+10x performace by replicating the row (256x1) Life cell array as 10 row generations of 256x1. This design now utilizes 94% of the fpga.
+Also completed the torus top bottom wrapping by advancing the buffer pointer 10 rows after each pass.
+The performance is now 6,172,620 (5e2fcc) generations per second, a measured 8.45x perf improvement.
+![life hdmi](ba9e3e9_perf.jpg "Commit ba9e3e9 running at 6 million generations per second")
+
+Can I get much more performance from this fpga? 
+I do feel I'm walking a well worn path of conway's life hardware enthusiests.
+I'm going to examine some 2D array arrangements to see if I can increase the life cells fitting the fpga chip.
+A 2D life array implementation would be ideal for extension to larger (10Kx10K) cell arrays, but would have
+a bit more complexity in the overlaps. Alternatively a multi-row implementation say 256x8 would run in the current
+framework. Hmm...
 
 
 
