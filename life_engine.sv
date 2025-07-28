@@ -5,7 +5,7 @@ module life_engine_1d5 #(
 	WIDTH = 256,	// Array width = Datapath width
 	DEPTH = 256,	// memory Depth
 	HEIGHT = 8,	 	// Datapath height
-	DBITS = 5,		// depth address bitwidth
+	DBITS = 8,		// depth address bitwidth
 	GENS  = 2		// hardware Generations per pass
 ) (
 	// System
@@ -14,7 +14,7 @@ module life_engine_1d5 #(
 	// Memory Control
 	input logic [DBITS-1:0] raddr, // also used for init writes
 	input logic [DBITS-1:0] waddr,
-	input	logic we,
+	input	logic [HEIGHT-1:0] we,
 	// cell array shift input
 	input logic sh,
 	// External Data Control
@@ -33,18 +33,18 @@ module life_engine_1d5 #(
 	logic [HEIGHT-1:0][WIDTH-1:0] mem_wdata;
 	logic [HEIGHT-1:0][WIDTH-1:0] mem_rdata;
 
-	// Fully registered 2 port ram 2048 bits of 32 words
-	// Generate loop of 8x our 256 bit width ones
+	// Fully registered 2 port ram 2048 bits = Max BW
+	// Generate loop of 8x our 256 bit wide ones
 	
 	genvar genii;
 	generate 
-		for( genii = 0; genii < 8; genii++ ) begin : _cell_ram
+		for( genii = 0; genii < HEIGHT; genii++ ) begin : _cell_ram
 			cell_ram _cell_ram (
 				.clock( clk ),
 				.data( (init) ? init_data : mem_wdata[genii] ),
 				.rdaddress( raddr ),
 				.wraddress( waddr ),
-				.wren( we ),
+				.wren( we[genii] ),
 				.q( mem_rdata[genii] )
 			);
 		end
@@ -53,91 +53,81 @@ module life_engine_1d5 #(
 	// Video Read port
 	logic [1:0] ld_del;
 	logic [1:0][2:0] ld_sel_del;
-	always_ff@(posedge clk) begin
+	always_ff @(posedge clk) begin
 		ld_del[1:0] <= { ld_del[0], ld };
-		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel };
-		if( ld_del[1] ) dout <= mem_rdata[ld_sel_del[1][2:0]]; // read 1 row
+		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel[2:0] };
+		if( ld_del[1] ) dout <= mem_rdata[ld_sel_del[1][2:0]]; // latch 1 row for video read.
 	end
 
-	// Read data registers 4 consecutive read words (each 256x8 bits)
+	// Read data registers 3 consecutive read words (each 256x8 bits)
 	
-	logic [3:0][HEIGHT-1:0][WIDTH-1:0] cell_array;
-	logic [1:0] sh_del;
+	logic [2:0][HEIGHT-1:0][WIDTH-1:0] cell_array;
 	always_ff@(posedge clk)
 	begin
-		// delay shift (why?) for 2 cycle mem read shift for global reg enable
-		sh_del <= { sh_del[0], sh };
-		// Cell shift register array is updated
-		if( sh_del[1] ) begin
-			cell_array[3:1] <= cell_array[0][2:0];
-			cell_array[0]   <= mem_rdata;
-		end else begin // hold
-			cell_array <= cell_array;
-		end
+		cell_array[2:1] <= cell_array[1:0];
+		cell_array[0]   <= mem_rdata;
 	end
 	
 	// Build cell_input array for ease of itteration
 	logic [HEIGHT+2*GENS-1:0][WIDTH-1:0] cell_input;
 	always_comb begin
 		for( int xx = 0; xx < WIDTH; xx++ ) begin
-			for( int ii = 0; ii < GENS; ii++ ) begin // above overlap
-				cell_input[ii][xx] = cell_array[0][HEIGHT-ii-1][xx];
+			for( int yy = 0; yy < GENS; yy++ ) begin // above overlap
+				cell_input[yy            ][xx] = cell_array[2][HEIGHT-GENS+yy][xx];
 			end
 			for( int yy = 0; yy < HEIGHT; yy++ ) begin // main array
-				cell_input[yy+GENS][xx] = cell_array[1][yy][xx];
+				cell_input[yy+GENS       ][xx] = cell_array[1][yy]            [xx];
 			end
-			for( int ii = 0; ii < GENS; ii++ ) begin
-				cell_input[ii+GENS+HEIGHT] = cell_array[2][ii][xx];
+			for( int yy = 0; yy < GENS; yy++ ) begin // below overlap
+				cell_input[yy+GENS+HEIGHT][xx] = cell_array[0][yy]            [xx];
 			end
 		end
 	end
 	
 
 	// add3 - 3bit vertical tally stage is registered
-	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH-1:0][1:0] add3;
-	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH-1:0]      orig; // register the center for later use
-	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH-1:0] cell_next;
+	logic [0:GENS-1][HEIGHT+2*GENS-3:0][WIDTH-1:0][1:0] add3;
+	logic [0:GENS-1][HEIGHT+2*GENS-3:0][WIDTH-1:0]      orig; // register the center for later use
+	logic [0:GENS-1][HEIGHT+2*GENS-3:0][WIDTH-1:0]      cell_next;
 	always_ff @(posedge clk ) begin : _add3
-		if( sh_del[1] ) begin
-			for( int gg = 0; gg < GENS; gg++ ) begin
-				for( int xx = 0; xx < WIDTH; xx++ ) begin
-					for( int yy = 0; yy < HEIGHT + GENS - gg; yy++ ) begin
-						if( gg == 0 ) begin // data from cell array 
-							add3[gg][yy][xx] <= { 1'b0, cell_input[yy+0][xx] } +
-													  { 1'b0, cell_input[yy+1][xx] } +
-													  { 1'b0, cell_input[yy+2][xx] } ;
-							orig[gg][yy][xx] <= cell_input[yy+1][xx];
-						end else begin // Data from prev gen
-							add3[gg][yy][xx] <= { 1'b0, cell_next[gg-1][yy+0][xx] } +
-													  { 1'b0, cell_next[gg-1][yy+1][xx] } +
-													  { 1'b0, cell_next[gg-1][yy+2][xx] } ;
-							orig[gg][yy][xx] <= cell_next[gg-1][yy+1][xx];
+		for( int gg = 0; gg < GENS; gg++ ) begin
+			for( int xx = 0; xx < WIDTH; xx++ ) begin
+				for( int yy = 0; yy < HEIGHT + 2*GENS - 2*gg - 2; yy++ ) begin
+					if( gg == 0 ) begin // data from cell array 
+						add3[gg][yy][xx] <= { 1'b0, cell_input[yy+0][xx] } +
+												  { 1'b0, cell_input[yy+1][xx] } +
+												  { 1'b0, cell_input[yy+2][xx] } ;
+						orig[gg][yy][xx] <= cell_input[yy+1][xx];
+					end else begin // Data from prev gen
+						add3[gg][yy][xx] <= { 1'b0, cell_next[gg-1][yy+0][xx] } +
+												  { 1'b0, cell_next[gg-1][yy+1][xx] } +
+												  { 1'b0, cell_next[gg-1][yy+2][xx] } ;
+						orig[gg][yy][xx] <= cell_next[gg-1][yy+1][xx];
 
-						end
-					end // yy
-				end // xx
-			end // gg
-		end // enable
+					end
+				end // yy
+			end // xx
+		end // gg
 	end
 
 	// add9 is sum of 3 add3's horizontally, combinatorial
-	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH-1:0][3:0] add9;
+	logic [0:GENS-1][HEIGHT+2*GENS-3:0][WIDTH-1:0][2:0] add9;
 	always_comb begin : _add9
 		for( int gg = 0; gg < GENS; gg++ ) begin
 			for( int xx = 0; xx < WIDTH; xx++ ) begin
-				for( int yy = 0; yy < HEIGHT + GENS - gg; yy++ ) begin
+				for( int yy = 0; yy < HEIGHT + GENS - 2*gg - 2; yy++ ) begin
 					if( xx == 0 ) begin // left wrap
-						add9[gg][yy][xx] =  { 2'b00, add3[gg][yy][WIDTH-1] } +
-											     { 2'b00, add3[gg][yy][xx+0] } +
-											     { 2'b00, add3[gg][yy][xx+1] } ;
+						add9[gg][yy][xx] =  { 1'b0, add3[gg][yy][WIDTH-1] } +
+											     { 1'b0, add3[gg][yy][xx+0] } +
+											     { 1'b0, add3[gg][yy][xx+1] } ;
 					end else if( xx == WIDTH-1 ) begin // Right wrap
-						add9[gg][yy][xx] =  { 2'b00, add3[gg][yy][xx-1] } +
-											     { 2'b00, add3[gg][yy][xx+0] } +
-											     { 2'b00, add3[gg][yy][   0] } ;
+						add9[gg][yy][xx] =  { 1'b0, add3[gg][yy][xx-1] } +
+											     { 1'b0, add3[gg][yy][xx+0] } +
+											     { 1'b0, add3[gg][yy][   0] } ;
 					end else begin
-						add9[gg][yy][xx] =  { 2'b00, add3[gg][yy][xx-1] } +
-											     { 2'b00, add3[gg][yy][xx+0] } +
-											     { 2'b00, add3[gg][yy][xx+1] } ;
+						add9[gg][yy][xx] =  { 1'b0, add3[gg][yy][xx-1] } +
+											     { 1'b0, add3[gg][yy][xx+0] } +
+											     { 1'b0, add3[gg][yy][xx+1] } ;
 					end
 				end // yy
 			end // xx
@@ -147,25 +137,24 @@ module life_engine_1d5 #(
 	// Cell state is registered
 
 	always_ff @(posedge clk) begin : _life_cell
-		if( sh_del[1] ) begin
-			for( int gg = 0; gg < GENS; gg++ ) begin
-				for( int xx = 0; xx < WIDTH; xx++ ) begin
-					for( int yy = 0; yy < HEIGHT + 1*(GENS-gg); yy++ ) begin // ***LIFE***
-						cell_next[gg][yy][xx] <= ((( add9[gg][yy][xx]==4 ) &&  orig[gg][yy][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-														  (( add9[gg][yy][xx]==3 ) &&  orig[gg][yy][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-														  (( add9[gg][yy][xx]==3 ) && !orig[gg][yy][xx] ))    // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-																				                     ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
-					end // yy
-				end // xx
-			end // gg
-		end // en
+		for( int gg = 0; gg < GENS; gg++ ) begin
+			for( int xx = 0; xx < WIDTH; xx++ ) begin
+				for( int yy = 0; yy < HEIGHT + GENS - 2*gg - 2; yy++ ) begin // ***LIFE***
+					cell_next[gg][yy][xx] <= ((( add9[gg][yy][xx]==4 ) &&  orig[gg][yy][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+													  (( add9[gg][yy][xx]==3 ) &&  orig[gg][yy][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+													  (( add9[gg][yy][xx]==3 ) && !orig[gg][yy][xx] ))    // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+																										? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+				end // yy
+			end // xx
+		end // gg
 	end
 		
-	// Final Generation output reg
-	always_ff@(posedge clk)
+	// Final Generation output reg is ram write data
+	
+	always_comb 
 		for( int xx = 0; xx < WIDTH; xx++ ) 
 			for( int yy = 0; yy < HEIGHT; yy++ ) 	
-				if( sh_del[1] ) mem_wdata[yy][xx] <= cell_next[GENS-1][yy][xx];
+				mem_wdata[yy][xx] = cell_next[GENS-1][yy][xx];
 			
 
 endmodule // life_engine_1d5	
