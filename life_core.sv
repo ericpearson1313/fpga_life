@@ -211,10 +211,11 @@ assign speaker_n = !speaker;
 //
 /////////////////////
 /////////////////////////////
-	parameter WIDTH = 256;	// Datapath width
-	parameter DEPTH = 256;	// memory depth
-	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 10;	// hardware Generations per pass
+	parameter WIDTH = 256;	// Datapath width, image width
+	parameter DEPTH = 256;	// memory depth, image height
+	parameter HEIGHT = 8;	// Datapath height
+	parameter DBITS = 5;		// depth address bitwidth
+	parameter GENS  = 2;	// hardware Generations per pass
 /////////////////////////////
 
 
@@ -229,9 +230,10 @@ assign speaker_n = !speaker;
 	logic we_init; // selects init_word as we data source 
 	logic init;	
 	
-	life_engine#(
+	life_engine_1d5 #(
 		.WIDTH( WIDTH ),
 		.DEPTH( DEPTH ),
+		.HEIGHT( HEIGHT ),
 		.DBITS( DBITS ),
 		.GENS(  GENS  )
 		)  _life_engine (
@@ -638,114 +640,6 @@ endmodule
 
 
 
-module life_engine #(
-	WIDTH = 256,	// Datapath widthe
-	DEPTH = 256,	// memory depth
-	DBITS = 8,		// depth address bitwidth
-	GENS  = 1		// hardware Generations per pass
-) (
-	input clk,
-	input reset,
-	// Memory Control
-	input logic [DBITS-1:0] raddr, // also used for init writes
-	input logic [DBITS-1:0] waddr,
-	input	logic we,
-	// cell array shift input
-	input logic sh,
-	// External Data Control
-	input logic ld,
-	output logic [WIDTH-1:0] dout, // data out
-	// Init port
-	input logic init,
-	input logic [WIDTH-1:0] init_data
-	
-);
-
-	// Memory
-	
-	logic [WIDTH-1:0] ram [0:DEPTH-1];
-	logic [WIDTH-1:0] mem_wdata;
-	logic [WIDTH-1:0] mem_rdata;
-
-	// Fully registered 2 port ram
-	cell_ram _cell_ram (
-		.clock( clk ),
-		.data( (init) ? init_data : mem_wdata ),
-		.rdaddress( raddr ),
-		.wraddress( waddr ),
-		.wren( we ),
-		.q( mem_rdata )
-	);
-	
-	logic [1:0] ld_del
-;	always_ff@(posedge clk) begin
-		ld_del[1:0] <= { ld_del[0], ld };
-		if( ld_del[1] ) dout <= mem_rdata;
-	end
-		
-	// Shift register arrays
-	logic [0:GENS-1][2:0][WIDTH-1:0] cell_array;
-	
-	// Shift register input
-	logic [1:0] sh_del;
-	logic [0:GENS-1][WIDTH-1:0] cell_next; // new generation input
-	always_ff@(posedge clk)
-	begin
-		// delay shift for global reg enable
-		sh_del <= { sh_del[0], sh };
-		
-		// Cell shift register array is updated
-		if( sh_del[1] ) begin
-			cell_array[0][2:1] <= cell_array[0][1:0];
-			cell_array[0][0]   <= mem_rdata;
-			for( int gg = 1; gg < GENS; gg++ ) begin
-				cell_array[gg][2:1] <= cell_array[gg][1:0];
-				cell_array[gg][0]   <= cell_next[gg-1];
-			end
-		end else begin // hold
-			cell_array <= cell_array;
-		end
-	end
-
-	logic [0:GENS-1][WIDTH-1:0][1:0] add3;
-	logic [0:GENS-1][WIDTH-1:0][1:0] add3_q;
-	logic [0:GENS-1][WIDTH-1:0][3:0] add9;
-
-	always_comb begin : _life_cells
-		// Form add3 array
-		for( int gg = 0; gg < GENS; gg++ )
-			for( int ii = 0; ii < WIDTH; ii++ ) begin
-			add3[gg][ii] =  { 1'b0, cell_array[gg][2][ii] } +
-								 { 1'b0, cell_array[gg][1][ii] } +
-								 { 1'b0, cell_array[gg][0][ii] } ;
-		end
-		// Form add9 array (adding 3 x add3 values)
-		for( int gg = 0; gg < GENS; gg++ )
-			for( int ii = 0; ii < WIDTH; ii++ ) begin
-				add9[gg][ii] =  { 2'b00, (ii==255)?add3_q[gg][0]:add3_q[gg][ii+1] } +
-									 { 2'b00,                         add3_q[gg][ii+0] } +
-									 { 2'b00, (ii==0)?add3_q[gg][255]:add3_q[gg][ii-1] } ;
-		end
-		// Calculate cell state
-		for( int gg = 0; gg < GENS; gg++ )
-			for( int ii = 0; ii < WIDTH; ii++ ) begin
-				cell_next[gg][ii] = ((( add9[gg][ii]==4 ) &&  cell_array[gg][2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-											(( add9[gg][ii]==3 ) &&  cell_array[gg][2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-											(( add9[gg][ii]==3 ) && !cell_array[gg][2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
-		end
-	end
-
-	// GENS * WIDTH register
-	// global reg enable wire
-	always @(posedge clk) 
-		if( sh_del[1] ) add3_q <= add3;
-		
-	// Final Generation output reg
-	always_ff@(posedge clk)
-		if( sh_del[1] ) mem_wdata <= cell_next[GENS-1];
-
-endmodule
 
 
 // Debounce of pushbutton
