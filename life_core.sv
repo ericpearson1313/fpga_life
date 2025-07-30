@@ -215,7 +215,7 @@ assign speaker_n = !speaker;
 	parameter DEPTH = 256;	// memory depth, image height
 	parameter HEIGHT = 8;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 1;	// hardware Generations per pass
+	parameter GENS  = 10;	// hardware Generations per pass
 /////////////////////////////
 
 
@@ -230,7 +230,7 @@ assign speaker_n = !speaker;
 	logic we_init; // selects init_word as we data source 
 	logic init;	
 	
-	life_engine_1d5 #(
+	life_engine_packed #(
 		.WIDTH( WIDTH ),
 		.DEPTH( DEPTH ),
 		.HEIGHT( HEIGHT ),
@@ -241,10 +241,9 @@ assign speaker_n = !speaker;
 		.reset( reset ),
 		.raddr( raddr ),
 		.waddr( waddr ),
-		.we( {8{we}} ),
+		.we( we ),
 		.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
-		.ld_sel( raddr[2:0] ), // select 1 row from 256x8
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
 		.init( init ),
 		.init_data( init_word ) // 256 bit

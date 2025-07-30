@@ -159,8 +159,156 @@ module life_engine_1d5 #(
 
 endmodule // life_engine_1d5	
 
+// Linear Life engine complex repacked to get 7.3 LE
+// WIDTH copies of life engine spanning a full row of the array.
+// GENS copies of the row to give multiple generations per pass.		
+module life_engine_packed #(
+	WIDTH = 256,	// Datapath width, image width
+	DEPTH = 256,	// memory depth, image height
+	HEIGHT = 0,		// Unused here
+	DBITS = 8,		// depth address bitwidth
+	GENS  = 1		// hardware Generations per pass
+) (
+	input clk,
+	input reset,
+	// Memory Control
+	input logic [DBITS-1:0] raddr, // also used for init writes
+	input logic [DBITS-1:0] waddr,
+	input	logic we,
+	// cell array shift input
+	input logic sh,
+	// External Data Control
+	input logic ld,
+	output logic [WIDTH-1:0] dout, // data out
+	// Init port
+	input logic init,
+	input logic [WIDTH-1:0] init_data
+	
+);
 
+//////////////////
+// SAME
+//////////////////
 
+	// Memory
+	
+	logic [WIDTH-1:0] ram [0:DEPTH-1];
+	logic [WIDTH-1:0] mem_wdata;
+	logic [WIDTH-1:0] mem_rdata;
+
+	// Fully registered 2 port ram
+	cell_ram _cell_ram (
+		.clock( clk ),
+		.data( (init) ? init_data : mem_wdata ),
+		.rdaddress( raddr ),
+		.wraddress( waddr ),
+		.wren( we ),
+		.q( mem_rdata )
+	);
+	
+	logic [1:0] ld_del
+;	always_ff@(posedge clk) begin
+		ld_del[1:0] <= { ld_del[0], ld };
+		if( ld_del[1] ) dout <= mem_rdata;
+	end
+		
+	// Shift register arrays
+	logic [0:GENS-1][2:0][WIDTH-1:0] cell_array;
+	
+	// Shift register input
+	logic [1:0] sh_del;
+	logic [0:GENS-1][WIDTH-1:0] cell_next; // new generation input
+	always_ff@(posedge clk)
+	begin
+		// delay shift for global reg enable
+		sh_del <= { sh_del[0], sh };
+		
+		// Cell shift register array is updated
+		if( sh_del[1] ) begin
+			cell_array[0][2:1] <= cell_array[0][1:0];
+			cell_array[0][0]   <= mem_rdata;
+			for( int gg = 1; gg < GENS; gg++ ) begin
+				cell_array[gg][2:1] <= cell_array[gg][1:0];
+				cell_array[gg][0]   <= cell_next[gg-1];
+			end
+		end else begin // hold
+			cell_array <= cell_array;
+		end
+	end
+
+//////////////////
+// REPACKED
+//////////////////
+	
+	// Hardcoded WIDTH = 256 for dev, parameterize later
+	
+	logic [0:GENS-1][86-1:0][1:0] add3;	 // | shape	
+	logic [0:GENS-1][85-1:0][2:0] add4;	 // = shape
+	logic [0:GENS-1][86-1:0][2:0] add4u; // 7 shape
+	logic [0:GENS-1][86-1:0][2:0] add3l; // | shape
+	logic [0:GENS-1][WIDTH-1:0][3:0] add8; // final add8
+	
+	// Registered Input adders
+	always_ff @(posedge clk) begin
+		for( int gg = 0; gg < GENS; gg++ ) begin
+			for( int ii = 0; ii < 85; ii++ ) // =-shape
+				add4[gg][ii] <= 	{ 2'b00, cell_array[gg][2][ii*3+1] } +
+										{ 2'b00, cell_array[gg][2][ii*3+2] } +
+										{ 2'b00, cell_array[gg][0][ii*3+1] } +
+										{ 2'b00, cell_array[gg][0][ii*3+2] };
+										
+			for( int ii = 0; ii < 86; ii++ ) // |-shape
+				add3[gg][ii] <=  	{ 1'b0, cell_array[gg][2][ii*3] } +
+										{ 1'b0, cell_array[gg][1][ii*3] } +
+										{ 1'b0, cell_array[gg][0][ii*3] } ;
+								
+			for( int ii = 0; ii < 86; ii++ ) // 7-shape
+				add4u[gg][ii] <= 	{ 2'b00, cell_array[gg][2][ii*3] } +
+										{ 2'b00, cell_array[gg][2][(ii==85)?0:(ii*3+1)] } +
+										{ 2'b00, cell_array[gg][1][(ii==85)?0:(ii*3+1)] } +
+										{ 2'b00, cell_array[gg][0][(ii==85)?0:(ii*3+1)] };
+
+			for( int ii = 0; ii < 86; ii++ ) // L-shape
+				add3l[gg][ii] <= 	{ 1'b0, cell_array[gg][2][(ii==0)?255:(ii*3-1)] } +
+										{ 1'b0, cell_array[gg][1][(ii==0)?255:(ii*3-1)] } +
+										{ 1'b0, cell_array[gg][0][(ii==0)?255:(ii*3-1)] };
+		end //gg
+	end
+	
+	// Add 8 adders
+	always_comb begin
+		for( int gg = 0; gg < GENS; gg++ ) begin
+			for( int ii = 0 ; ii < 85; ii++ ) begin // 2/3 are packed 6.5 LE/cell
+				add8[gg][ii*3+1] = 	{ 1'b0,  add4[gg][ii] } +
+											{ 2'b00, add3[gg][ii+0] } +
+											cell_array[gg][2][ii*3+2] ;
+				add8[gg][ii*3+2] = 	{ 1'b0,  add4[gg][ii] } +
+											{ 2'b00, add3[gg][ii+1] } +
+											cell_array[gg][2][ii*3+0] ;
+			end //ii	
+			for( int ii = 0 ; ii < 86; ii++ ) begin // remaing 1/3 packed 9 LE/cell
+				add8[gg][ii*3]   = 	{ 1'b0,  add4u[gg][ii] } +
+											{ 2'b00, add3l[gg][ii] } + 
+											 cell_array[gg][1][ii*3];
+			end //ii
+		end // gg
+	end
+
+	// Calculate cell state
+	always_comb begin
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int ii = 0; ii < WIDTH; ii++ )
+				cell_next[gg][ii] = ((( add8[gg][ii][2:0]==3 ) &&  cell_array[gg][2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+											(( add8[gg][ii][2:0]==2 ) &&  cell_array[gg][2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+											(( add8[gg][ii][2:0]==3 ) && !cell_array[gg][2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+	end
+		
+	// Final Generation output reg
+	always_ff@(posedge clk)
+		if( sh_del[1] ) mem_wdata <= cell_next[GENS-1];
+
+endmodule
 
 
 
@@ -275,4 +423,74 @@ module life_engine #(
 	always_ff@(posedge clk)
 		if( sh_del[1] ) mem_wdata <= cell_next[GENS-1];
 
+endmodule
+
+// Some test for the cell patterns
+// using 2 sums of 4 cells
+// Takes 10 LE (confirmed)
+module add4_cell
+	(
+		input clk,
+		input [8:0] in,
+		output out
+	);
+	logic [8:0] ireg;
+	logic [2:0] add4u, add4l;
+	logic [3:0] add8;
+	always_ff @(posedge clk) ireg <= in;
+	always_ff @(posedge clk) begin
+		add4u <= { 2'b00, ireg[0] } +
+				   { 2'b00, ireg[1] } +
+				   { 2'b00, ireg[2] } +
+				   { 2'b00, ireg[3] };
+		add4l <= { 2'b00, ireg[4] } +
+				   { 2'b00, ireg[5] } +
+				   { 2'b00, ireg[6] } +
+				   { 2'b00, ireg[7] };
+	end
+	always_comb begin
+		add8 = { 1'b0, add4u } +
+				 { 1'b0, add4l };
+	end
+	always_ff @(posedge clk) begin
+		out <= ((( add8[2:0]==3 ) &&  ireg[8] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+				  (( add8[2:0]==2 ) &&  ireg[8] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+				  (( add8[2:0]==3 ) && !ireg[8] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+	end
+endmodule
+
+// Using sums of 4 cells plus 3 cells plus a final cell.
+// Gives 9 cells total (confirmed)
+module add431_cell
+	(
+		input clk,
+		input [8:0] in,
+		output out
+	);
+	logic [8:0] ireg;
+	logic [2:0] add4;
+	logic [1:0] add3;
+	logic [3:0] add8;
+	always_ff @(posedge clk) ireg <= in;
+	always_ff @(posedge clk) begin
+		add4  <= { 2'b00, ireg[0] } +
+				   { 2'b00, ireg[1] } +
+				   { 2'b00, ireg[2] } +
+				   { 2'b00, ireg[3] };
+		add3  <= { 1'b0, ireg[4] } +
+				   { 1'b0, ireg[5] } +
+				   { 1'b0, ireg[6] };
+	end
+	always_comb begin
+		add8 = { 1'b0, add4 } +
+				 { 2'b00, add3 } + ireg[7];
+				 
+	end
+	always_ff @(posedge clk) begin
+		out <= ((( add8[2:0]==3 ) &&  ireg[8] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+				  (( add8[2:0]==2 ) &&  ireg[8] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+				  (( add8[2:0]==3 ) && !ireg[8] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+	end
 endmodule
