@@ -242,65 +242,54 @@ module life_engine_packed #(
 	
 	// Hardcoded WIDTH = 256 for dev, parameterize later
 	
-	logic [0:GENS-1][86-1:0][1:0] add3;	 // | shape	
-	logic [0:GENS-1][85-1:0][2:0] add4;	 // = shape
-	logic [0:GENS-1][86-1:0][2:0] add4u; // 7 shape
-	logic [0:GENS-1][86-1:0][2:0] add3l; // | shape
+	logic [0:GENS-1][WIDTH-1:0][1:0] add3;	 // | shape	
+	logic [0:GENS-1][WIDTH-1:0][2:0] add4;	 // = shape
 	logic [0:GENS-1][WIDTH-1:0][3:0] add8; // final add8
 	
 	// Registered Input adders
 	always_ff @(posedge clk) begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
-			for( int ii = 0; ii < 85; ii++ ) // =-shape
-				add4[gg][ii] <= 	{ 2'b00, cell_array[gg][2][ii*3+1] } +
-										{ 2'b00, cell_array[gg][2][ii*3+2] } +
-										{ 2'b00, cell_array[gg][0][ii*3+1] } +
-										{ 2'b00, cell_array[gg][0][ii*3+2] };
+			for( int xx = 0; xx < WIDTH; xx++ ) // =shape
+				add4[gg][xx] <= 	{ 2'b00, cell_array[gg][2][xx] } +
+										{ 2'b00, cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] } +
+										{ 2'b00, cell_array[gg][0][xx] } +
+										{ 2'b00, cell_array[gg][0][(xx==WIDTH-1)?0:(xx+1)] };
 										
-			for( int ii = 0; ii < 86; ii++ ) // |-shape
-				add3[gg][ii] <=  	{ 1'b0, cell_array[gg][2][ii*3] } +
-										{ 1'b0, cell_array[gg][1][ii*3] } +
-										{ 1'b0, cell_array[gg][0][ii*3] } ;
-								
-			for( int ii = 0; ii < 86; ii++ ) // 7-shape
-				add4u[gg][ii] <= 	{ 2'b00, cell_array[gg][2][ii*3] } +
-										{ 2'b00, cell_array[gg][2][(ii==85)?0:(ii*3+1)] } +
-										{ 2'b00, cell_array[gg][1][(ii==85)?0:(ii*3+1)] } +
-										{ 2'b00, cell_array[gg][0][(ii==85)?0:(ii*3+1)] };
-
-			for( int ii = 0; ii < 86; ii++ ) // L-shape
-				add3l[gg][ii] <= 	{ 1'b0, cell_array[gg][2][(ii==0)?255:(ii*3-1)] } +
-										{ 1'b0, cell_array[gg][1][(ii==0)?255:(ii*3-1)] } +
-										{ 1'b0, cell_array[gg][0][(ii==0)?255:(ii*3-1)] };
+			for( int xx = 0; xx < WIDTH; xx++ ) // |shape
+				add3[gg][xx] <=  	{ 1'b0, cell_array[gg][2][xx] } +
+										{ 1'b0, cell_array[gg][1][xx] } +
+										{ 1'b0, cell_array[gg][0][xx] } ;
 		end //gg
 	end
 	
 	// Add 8 adders
 	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
-			for( int ii = 0 ; ii < 85; ii++ ) begin // 2/3 are packed 6.5 LE/cell
-				add8[gg][ii*3+1] = 	{ 1'b0,  add4[gg][ii] } +
-											{ 2'b00, add3[gg][ii+0] } +
-											cell_array[gg][2][ii*3+2] ;
-				add8[gg][ii*3+2] = 	{ 1'b0,  add4[gg][ii] } +
-											{ 2'b00, add3[gg][ii+1] } +
-											cell_array[gg][2][ii*3+0] ;
-			end //ii	
-			for( int ii = 0 ; ii < 86; ii++ ) begin // remaing 1/3 packed 9 LE/cell
-				add8[gg][ii*3]   = 	{ 1'b0,  add4u[gg][ii] } +
-											{ 2'b00, add3l[gg][ii] } + 
-											 cell_array[gg][1][ii*3];
-			end //ii
+			for( int xx = 0 ; xx < WIDTH; xx++ ) begin 
+				if( xx % 3 == 0 ) begin // use "|=" will not overlap with anything
+					add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+										{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
+										cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] ;
+				end else if(xx % 3 == 1 ) begin // again use "|=" but with 50% overlap 
+					add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+										{ 2'b00, add3[gg][xx-1] } + // assume no wrap
+										cell_array[gg][2][xx+1] ;
+				end else /* xx %3 == 2 */ begin // use "=|" to complete "|==|" other half of the overlap
+					add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + // should not wrap
+										{ 2'b00, add3[gg][xx+1] } + // Should not wrap
+										cell_array[gg][2][xx-1] ;	 // should not wrap
+				end
+			end //xx
 		end // gg
 	end
 
 	// Calculate cell state
 	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ )
-			for( int ii = 0; ii < WIDTH; ii++ )
-				cell_next[gg][ii] = ((( add8[gg][ii][2:0]==3 ) &&  cell_array[gg][2][ii] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-											(( add8[gg][ii][2:0]==2 ) &&  cell_array[gg][2][ii] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-											(( add8[gg][ii][2:0]==3 ) && !cell_array[gg][2][ii] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+			for( int xx = 0; xx < WIDTH; xx++ )
+				cell_next[gg][xx] = ((( add8[gg][xx][2:0]==3 ) &&  cell_array[gg][2][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+											(( add8[gg][xx][2:0]==2 ) &&  cell_array[gg][2][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+											(( add8[gg][xx][2:0]==3 ) && !cell_array[gg][2][xx] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
 																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 	end
 		
