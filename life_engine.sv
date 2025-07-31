@@ -256,30 +256,28 @@ module life_engine_packed #(
 										{ 2'b00, cell_array[gg][0][(xx==WIDTH-1)?0:(xx+1)] };
 										
 			for( int xx = 0; xx < WIDTH; xx++ ) // |shape
-				add3[gg][xx] <=  	{ 1'b0, cell_array[gg][2][xx] } +
+				add3[gg][xx]  <=  { 1'b0, cell_array[gg][2][xx] } +
 										{ 1'b0, cell_array[gg][1][xx] } +
 										{ 1'b0, cell_array[gg][0][xx] } ;
 		end //gg
 	end
 	
 	// Add 8 adders
+
 	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
-			for( int xx = 0 ; xx < WIDTH; xx++ ) begin 
-				if( xx % 3 == 0 ) begin // use "|=" will not overlap with anything
-					add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
-										{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
-										cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] ;
-				end else if(xx % 3 == 1 ) begin // again use "|=" but with 50% overlap 
-					add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
-										{ 2'b00, add3[gg][xx-1] } + // assume no wrap
-										cell_array[gg][2][xx+1] ;
-				end else /* xx %3 == 2 */ begin // use "=|" to complete "|==|" other half of the overlap
-					add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + // should not wrap
-										{ 2'b00, add3[gg][xx+1] } + // Should not wrap
-										cell_array[gg][2][xx-1] ;	 // should not wrap
-				end
-			end //xx
+			for( int xx = 0 ; xx < WIDTH; xx+=3 ) // |=*
+				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+									{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
+									cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] ;
+			for( int xx = 1 ; xx < WIDTH; xx+=3 ) // |=*
+				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+									{ 2'b00, add3[gg][xx-1] } + 
+									cell_array[gg][2][xx+1] ;
+			for( int xx = 2 ; xx < WIDTH; xx+=3 ) // *=|
+				add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + 
+									{ 2'b00, add3[gg][xx+1] } + 
+									cell_array[gg][2][xx-1] ;	 
 		end // gg
 	end
 

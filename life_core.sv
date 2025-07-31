@@ -230,7 +230,7 @@ assign speaker_n = !speaker;
 	logic we_init; // selects init_word as we data source 
 	logic init;	
 	
-	life_engine_packed #(
+	life_engine #(
 		.WIDTH( WIDTH ),
 		.DEPTH( DEPTH ),
 		.HEIGHT( HEIGHT ),
