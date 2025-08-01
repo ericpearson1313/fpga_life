@@ -216,23 +216,14 @@ module life_engine_packed #(
 	logic [0:GENS-1][2:0][WIDTH-1:0] cell_array;
 	
 	// Shift register input
-	logic [1:0] sh_del;
 	logic [0:GENS-1][WIDTH-1:0] cell_next; // new generation input
 	always_ff@(posedge clk)
 	begin
-		// delay shift for global reg enable
-		sh_del <= { sh_del[0], sh };
-		
-		// Cell shift register array is updated
-		if( sh_del[1] ) begin
-			cell_array[0][2:1] <= cell_array[0][1:0];
-			cell_array[0][0]   <= mem_rdata;
-			for( int gg = 1; gg < GENS; gg++ ) begin
-				cell_array[gg][2:1] <= cell_array[gg][1:0];
-				cell_array[gg][0]   <= cell_next[gg-1];
-			end
-		end else begin // hold
-			cell_array <= cell_array;
+		cell_array[0][2:1] <= cell_array[0][1:0];
+		cell_array[0][0]   <= mem_rdata;
+		for( int gg = 1; gg < GENS; gg++ ) begin
+			cell_array[gg][2:1] <= cell_array[gg][1:0];
+			cell_array[gg][0]   <= cell_next[gg-1];
 		end
 	end
 
@@ -247,16 +238,16 @@ module life_engine_packed #(
 	logic [0:GENS-1][WIDTH-1:0][3:0] add8; // final add8
 	
 	// Registered Input adders
-	always_ff @(posedge clk) begin
+	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
 			for( int xx = 0; xx < WIDTH; xx++ ) // =shape
-				add4[gg][xx] <= 	{ 2'b00, cell_array[gg][2][xx] } +
+				add4[gg][xx] = 	{ 2'b00, cell_array[gg][2][xx] } +
 										{ 2'b00, cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] } +
 										{ 2'b00, cell_array[gg][0][xx] } +
 										{ 2'b00, cell_array[gg][0][(xx==WIDTH-1)?0:(xx+1)] };
 										
 			for( int xx = 0; xx < WIDTH; xx++ ) // |shape
-				add3[gg][xx]  <=  { 1'b0, cell_array[gg][2][xx] } +
+				add3[gg][xx]  =   { 1'b0, cell_array[gg][2][xx] } +
 										{ 1'b0, cell_array[gg][1][xx] } +
 										{ 1'b0, cell_array[gg][0][xx] } ;
 		end //gg
@@ -269,31 +260,31 @@ module life_engine_packed #(
 			for( int xx = 0 ; xx < WIDTH; xx+=3 ) // |=*
 				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
 									{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
-									cell_array[gg][2][(xx==WIDTH-1)?0:(xx+1)] ;
+									cell_array[gg][1][(xx==WIDTH-1)?0:(xx+1)] ;
 			for( int xx = 1 ; xx < WIDTH; xx+=3 ) // |=*
 				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
 									{ 2'b00, add3[gg][xx-1] } + 
-									cell_array[gg][2][xx+1] ;
+									cell_array[gg][1][xx+1] ;
 			for( int xx = 2 ; xx < WIDTH; xx+=3 ) // *=|
 				add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + 
 									{ 2'b00, add3[gg][xx+1] } + 
-									cell_array[gg][2][xx-1] ;	 
+									cell_array[gg][1][xx-1] ;	 
 		end // gg
 	end
 
 	// Calculate cell state
-	always_comb begin
+	always_ff @(posedge clk) begin
 		for( int gg = 0; gg < GENS; gg++ )
 			for( int xx = 0; xx < WIDTH; xx++ )
-				cell_next[gg][xx] = ((( add8[gg][xx][2:0]==3 ) &&  cell_array[gg][2][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-											(( add8[gg][xx][2:0]==2 ) &&  cell_array[gg][2][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-											(( add8[gg][xx][2:0]==3 ) && !cell_array[gg][2][xx] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+				cell_next[gg][xx] <=((( add8[gg][xx][2:0]==3 ) &&  cell_array[gg][1][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+											(( add8[gg][xx][2:0]==2 ) &&  cell_array[gg][1][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+											(( add8[gg][xx][2:0]==3 ) && !cell_array[gg][1][xx] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
 																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 	end
 		
 	// Final Generation output reg
 	always_ff@(posedge clk)
-		if( sh_del[1] ) mem_wdata <= cell_next[GENS-1];
+		mem_wdata <= cell_next[GENS-1];
 
 endmodule
 
