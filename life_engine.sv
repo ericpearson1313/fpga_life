@@ -438,37 +438,96 @@ module add4_cell
 	end
 endmodule
 
-// Using sums of 4 cells plus 3 cells plus a final cell.
-// Gives 9 cells total (confirmed)
+// Test LC count of 2 adgacent life cells in |==| pattern.
+// Should be a total of 8 LE per cell (we saved 1 LE with carry chain.
+// If works this implys we can get towards 6.5 LE / cell average
+//
 module add431_cell
 	(
 		input clk,
-		input [8:0] in,
-		output out
+		input [3:0][2:0] in,
+		output [1:0] out
 	);
-	logic [8:0] ireg;
+	logic [3:0][2:0] ireg;
 	logic [2:0] add4;
-	logic [1:0] add3;
-	logic [3:0] add8;
+	logic [1:0] add3l, add3r;
+	logic       add1l, add1r; // null operation: sum of 1 bit 
+	logic [3:0] add8l, add8r;
+	
+	// input regs
 	always_ff @(posedge clk) ireg <= in;
-	always_ff @(posedge clk) begin
-		add4  <= { 2'b00, ireg[0] } +
-				   { 2'b00, ireg[1] } +
-				   { 2'b00, ireg[2] } +
-				   { 2'b00, ireg[3] };
-		add3  <= { 1'b0, ireg[4] } +
-				   { 1'b0, ireg[5] } +
-				   { 1'b0, ireg[6] };
-	end
+	
+	// First stage adders
 	always_comb begin
-		add8 = { 1'b0, add4 } +
-				 { 2'b00, add3 } + ireg[7];
-				 
+		add4  = { 2'b00, ireg[1][0] } +
+				  { 2'b00, ireg[1][2] } +
+				  { 2'b00, ireg[2][0] } +
+				  { 2'b00, ireg[2][2] };
+		add3l = { 1'b0, ireg[0][0] } +
+				  { 1'b0, ireg[0][1] } +
+				  { 1'b0, ireg[0][2] };
+		add3r = { 1'b0, ireg[3][0] } +
+				  { 1'b0, ireg[3][1] } +
+				  { 1'b0, ireg[3][2] };
+		add1l =         ireg[2][1];
+		add1r =         ireg[1][1];
 	end
+		
+	// Here are the 3 bit inputs to each stage
+	logic [6:0][2:0] lut_in;
+	logic [6:0] cout; // carry chain (from prev stage)
+	//						Lut Inputs  C       B        A
+	assign lut_in[0][2:0] = {    1'b0,   1'b1 , add1l    } ;	// carry feed in of add1 (when sum = 2)
+	assign lut_in[1][2:0] = { cout[0], add4[0], add3l[0] } ;
+	assign lut_in[2][2:0] = { cout[1], add4[1], add3l[1] } ;
+	assign lut_in[3][2:0] = { cout[2], add4[2], add1r    } ; // merge final-addition and carry-feedin.
+	assign lut_in[4][2:0] = { cout[3], add4[0], add3r[0] } ;
+	assign lut_in[5][2:0] = { cout[4], add4[1], add3r[1] } ;
+	assign lut_in[6][2:0] = { cout[5], add4[2],     1'b0 } ;	// msb calc
+	
+	// Timing analyser might not know about the merge.
+	// Will need to false path between add1r->add8l[2] and cin,add4[2]->cout 
+
+	// Build data into sums*3+1 LE's into a carry chain;
+	logic [6:0] sout; // sum output bits, we'll subsample
+	
+	// Now the LE manually instantiated
+	genvar gg;
+	generate
+		for( gg = 0; gg < 7; gg++ ) begin : _add8_chain
+			fiftyfivenm_lcell_comb #(
+				.dont_touch ( (gg==3||gg==6)?"on":"off" ),
+				.lpm_type   ( "fiftyfivenm_lcell_comb"), // Does this infer Max10 is a 55nm chip?
+				.sum_lutc_input ( "cin" ),					
+				.lut_mask 	( (gg==3) ? 16'hCCAA :		// Sum=Cin+add4[2], Carry = add1r
+								  (gg==0) ? 16'h00AA :		// Sum=0          , Carry = add1l
+								  (gg==6) ? 16'hCC00 :     // Sum=Cin+addr[2], Carry = 0;         
+											   16'h96E8 ) 	   // Sum=Cin+A+B, Carry=A&B|Cin&(A|B) normal adder.
+			) _add8s (
+				.dataa	(lut_in[gg][0]),
+				.datab	(lut_in[gg][1]),
+				.datac	(1'b0),  // not used, carry inpu
+				.datad	(1'b1),	// 1 selects sum as output, 0 carry
+				.cin		(lut_in[gg][2]),
+				.combout	(sout[gg]),
+				.cout		(cout[gg])
+			);		
+		end // gg
+	endgenerate
+	
+	// Skipping sout[0] assign the 3-bit add8 connections
+	assign add8l[2:0] = sout[3:1];
+	assign add8r[2:0] = sout[6:4];
+	
+	// life generation calc
 	always_ff @(posedge clk) begin
-		out <= ((( add8[2:0]==3 ) &&  ireg[8] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-				  (( add8[2:0]==2 ) &&  ireg[8] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-				  (( add8[2:0]==3 ) && !ireg[8] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+		out[0]<= ((( add8l[2:0]==3 ) &&  ireg[1][1] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+				    (( add8l[2:0]==2 ) &&  ireg[1][1] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+				    (( add8l[2:0]==3 ) && !ireg[1][1] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+		out[1] <= ((( add8r[2:0]==3 ) &&  ireg[2][1] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+				     (( add8r[2:0]==2 ) &&  ireg[2][1] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+				     (( add8r[2:0]==3 ) && !ireg[2][1] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
 												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 	end
 endmodule
