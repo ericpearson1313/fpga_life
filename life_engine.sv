@@ -477,7 +477,7 @@ module add431_cell
 	logic [6:0][2:0] lut_in;
 	logic [6:0] cout; // carry chain (from prev stage)
 	//						Lut Inputs  C       B        A
-	assign lut_in[0][2:0] = {    1'b0,   1'b1 , add1l    } ;	// carry feed in of add1 (when sum = 2)
+	assign lut_in[0][2:0] = {    1'b0,  add1l ,  1'b1    } ;	// carry feed in of add1 (when sum = 2)
 	assign lut_in[1][2:0] = { cout[0], add4[0], add3l[0] } ;
 	assign lut_in[2][2:0] = { cout[1], add4[1], add3l[1] } ;
 	assign lut_in[3][2:0] = { cout[2], add4[2], add1r    } ; // merge final-addition and carry-feedin.
@@ -496,13 +496,16 @@ module add431_cell
 	generate
 		for( gg = 0; gg < 7; gg++ ) begin : _add8_chain
 			fiftyfivenm_lcell_comb #(
-				.dont_touch ( (gg==3||gg==6)?"on":"off" ),
+				.dont_touch ( "off" ),
 				.lpm_type   ( "fiftyfivenm_lcell_comb"), // Does this infer Max10 is a 55nm chip?
 				.sum_lutc_input ( "cin" ),					
-				.lut_mask 	( (gg==3) ? 16'hCCAA :		// Sum=Cin+add4[2], Carry = add1r
-								  (gg==0) ? 16'h00AA :		// Sum=0          , Carry = add1l
-								  (gg==6) ? 16'hCC00 :     // Sum=Cin+addr[2], Carry = 0;         
-											   16'h96E8 ) 	   // Sum=Cin+A+B, Carry=A&B|Cin&(A|B) normal adder.
+				.lut_mask 	( (gg==0) ? 16'h00CC :		// Sum=0          , Carry = add1l
+								  (gg==1) ? 16'h9617 :		// Sum=Cin+add4[2], Carry = A&B|Cin&(A|B)
+								  (gg==2) ? 16'h698E :		// Sum=Cin+add4[2], Carry = A&B|Cin&(A|B)
+								  (gg==3) ? 16'h3C55 :		// Sum=Cin+add4[2], Carry = add1r
+								  (gg==4) ? 16'h698E :		// Sum=Cin+add4[2], Carry = A&B|Cin&(A|B)
+								  (gg==5) ? 16'h9617 :		// Sum=Cin+add4[2], Carry = A&B|Cin&(A|B)
+								/*(gg==6)*/ 16'hC300 )     // Sum=Cin+addr[2], Carry = 0;         
 			) _add8s (
 				.dataa	(lut_in[gg][0]),
 				.datab	(lut_in[gg][1]),
