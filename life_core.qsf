@@ -228,9 +228,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE hdmi_video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE font57.sv
 set_global_assignment -name TEXT_FILE font_rom_init.txt
 set_global_assignment -name TEXT_FILE text_overlay_rom_init.txt
-set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
-set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
-set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_global_assignment -name QIP_FILE ufm_flash/synthesis/ufm_flash.qip
 set_global_assignment -name QIP_FILE trial_pll.qip
 set_global_assignment -name MIF_FILE flash_rom.mif
@@ -240,4 +237,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE packet_assembler.sv
 set_global_assignment -name SYSTEMVERILOG_FILE auxiliary_video_information_info_frame.sv
 set_global_assignment -name QIP_FILE cell_ram.qip
 set_global_assignment -name SYSTEMVERILOG_FILE life_engine.sv
+set_global_assignment -name OPTIMIZATION_MODE BALANCED
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
