@@ -287,35 +287,36 @@ module life_engine_packed #(
 	
 	
 	// generate Adders
-	logic [GENS*WIDTH-1+5:0][2:0] vec8;
+	logic [GENS*WIDTH-1+5:0][2:0] add8_out;
 	genvar kk;
 	generate
 		for( kk = 0; kk < (GENS*WIDTH); kk+=5 ) begin : _gen431
 			add431_cell _add431(
-				.in	( {   ((kk+0)>=GENS*WIDTH)?8'h00:add8_in[kk+0], 
-								((kk+1)>=GENS*WIDTH)?8'h00:add8_in[kk+1], 
-								((kk+2)>=GENS*WIDTH)?8'h00:add8_in[kk+2], 
-								((kk+3)>=GENS*WIDTH)?8'h00:add8_in[kk+3], 
-								((kk+4)>=GENS*WIDTH)?8'h00:add8_in[kk+4] } ),
-				.add8  ( vec8[kk+4-:5] )
+				.in	( {   ((kk+4)>=GENS*WIDTH)?6'h00:add8_in[kk+4], 
+								((kk+3)>=GENS*WIDTH)?6'h00:add8_in[kk+3], 
+								((kk+2)>=GENS*WIDTH)?6'h00:add8_in[kk+2], 
+								((kk+1)>=GENS*WIDTH)?6'h00:add8_in[kk+1], 
+								((kk+0)>=GENS*WIDTH)?6'h00:add8_in[kk+0] } ),
+				.add8  ( add8_out[kk+4-:5] )
 			);
 		end
 	endgenerate
 				
 	// Connect up the add8 outputs
-	always_comb begin
-		for( int gg = 0; gg < GENS; gg++ )
-			for( int xx = 0; xx < WIDTH; xx++ )
-				add8[gg][xx] = vec8[gg*WIDTH+xx];
-	end
-				
-	// Calculate cell state
+
 	always_ff @(posedge clk) begin
 		for( int gg = 0; gg < GENS; gg++ )
 			for( int xx = 0; xx < WIDTH; xx++ )
-				cell_next[gg][xx] <=((( add8[gg][xx][2:0]==3 ) &&  cell_array[gg][1][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-											(( add8[gg][xx][2:0]==2 ) &&  cell_array[gg][1][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-											(( add8[gg][xx][2:0]==3 ) && !cell_array[gg][1][xx] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
+				add8[gg][xx] <= add8_out[gg*WIDTH+xx];
+	end
+				
+	// Calculate cell state
+	always_comb begin
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int xx = 0; xx < WIDTH; xx++ )
+				cell_next[gg][xx]  =((( add8[gg][xx][2:0]==3 ) &&  cell_array[gg][2][xx] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
+											(( add8[gg][xx][2:0]==2 ) &&  cell_array[gg][2][xx] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
+											(( add8[gg][xx][2:0]==3 ) && !cell_array[gg][2][xx] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
 																			  ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
 	end
 		

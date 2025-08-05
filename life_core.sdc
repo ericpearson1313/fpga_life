@@ -37,6 +37,8 @@ set_false_path -from [get_registers {*ram_block*porta_we_reg}] -to [get_register
 
 #break up intentionally created carry chains.
 #Break add8 carry chains from cin to cout.
+#suspect the tool eliminates these paths as it looks at the LE lut contents. Can probably not worry about it.
+#need to get correct syntax, names and regular expressions.
 set_false_path -from [get_pins {*add431_cell:*|lut_in[3][2]}]  -to [get_pins {*add431_cell:*|cout[3]}]
 set_false_path -from [get_pins {*add431_cell:*|lut_in[6][2]}]  -to [get_pins {*add431_cell:*|cout[6]}]
 set_false_path -from [get_pins {*add431_cell:*|lut_in[9][2]}]  -to [get_pins {*add431_cell:*|cout[9]}]

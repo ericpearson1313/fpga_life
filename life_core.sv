@@ -215,7 +215,7 @@ assign speaker_n = !speaker;
 	parameter DEPTH = 256;	// memory depth, image height
 	parameter HEIGHT = 8;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 12;	// hardware Generations per pass
+	parameter GENS  = 11;	// hardware Generations per pass
 /////////////////////////////
 
 
