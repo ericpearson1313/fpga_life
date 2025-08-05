@@ -403,109 +403,80 @@ module life_engine #(
 
 endmodule
 
-// Some test for the cell patterns
-// using 2 sums of 4 cells
-// Takes 10 LE (confirmed)
-module add4_cell
-	(
-		input clk,
-		input [8:0] in,
-		output out
-	);
-	logic [8:0] ireg;
-	logic [2:0] add4u, add4l;
-	logic [3:0] add8;
-	always_ff @(posedge clk) ireg <= in;
-	always_ff @(posedge clk) begin
-		add4u <= { 2'b00, ireg[0] } +
-				   { 2'b00, ireg[1] } +
-				   { 2'b00, ireg[2] } +
-				   { 2'b00, ireg[3] };
-		add4l <= { 2'b00, ireg[4] } +
-				   { 2'b00, ireg[5] } +
-				   { 2'b00, ireg[6] } +
-				   { 2'b00, ireg[7] };
-	end
-	always_comb begin
-		add8 = { 1'b0, add4u } +
-				 { 1'b0, add4l };
-	end
-	always_ff @(posedge clk) begin
-		out <= ((( add8[2:0]==3 ) &&  ireg[8] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-				  (( add8[2:0]==2 ) &&  ireg[8] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-				  (( add8[2:0]==3 ) && !ireg[8] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
-	end
-endmodule
 
-// Test LC count of 2 adgacent life cells in |==| pattern.
-// Should be a total of 8 LE per cell (we saved 1 LE with carry chain.
-// If works this implys we can get towards 6.5 LE / cell average
-//
+
+
+// Implement 5 add8 in a single carry chain of 5*3+1=16 cells
 module add431_cell
 	(
-		input clk,
-		input [3:0][2:0] in,
-		output [1:0] out
+		input  logic [0:4][7:0] in,	// 5 sets of 8bits { add4[2:0], addr3[1:0], add1 }
+		output logic [0:4][2:0] add8 // Sum of 8 with in 3-bits with 8 wrapping to 0; 
 	);
-	logic [3:0][2:0] ireg;
-	logic [2:0] add4;
-	logic [1:0] add3l, add3r;
-	logic       add1l, add1r; // null operation: sum of 1 bit 
-	logic [3:0] add8l, add8r;
-	
-	// input regs
-	always_ff @(posedge clk) ireg <= in;
+
+	logic [0:4][2:0] add4;
+	logic [0:4][1:0] add3;
+	logic [0:4]      add1; // null operation: sum of 1 bit 
 	
 	// First stage adders
 	always_comb begin
-		add4  = { 2'b00, ireg[1][0] } +
-				  { 2'b00, ireg[1][2] } +
-				  { 2'b00, ireg[2][0] } +
-				  { 2'b00, ireg[2][2] };
-		add3l = { 1'b0, ireg[0][0] } +
-				  { 1'b0, ireg[0][1] } +
-				  { 1'b0, ireg[0][2] };
-		add3r = { 1'b0, ireg[3][0] } +
-				  { 1'b0, ireg[3][1] } +
-				  { 1'b0, ireg[3][2] };
-		add1l =         ireg[2][1];
-		add1r =         ireg[1][1];
+		for( int ii = 0; ii < 5; ii++ )
+			{ add4[ii][2:0], add3[ii][1:0], add1[ii] } = in[ii][7:0];
 	end
-		
-	// Here are the 3 bit inputs to each stage
-	logic [6:0][2:0] lut_in;
-	logic [6:0] cout; // carry chain (from prev stage)
+
+	// now we build 5 adders: add8[ii] = add4[ii] + add3[ii] + add1[ii] 
+	// implemented as 16 carry chain linked LEs. (instead of 20les otherwise)
+	
+	// Each LE has a carry and sum outputs and 3 lut input bits
+	logic [15:0] sout;
+	logic [15:0] cout;
+	logic [15:0][2:0] lut_in;
+	
+	// Build the carry chain and connect lut inputs.
 	//						Lut Inputs  C       B        A
-	assign lut_in[0][2:0] = {    1'b0, add1l    ,    1'b0} ;	// carry feed in of add1 (when sum = 2)
-	assign lut_in[1][2:0] = { cout[0], add3l[0] , add4[0]} ;
-	assign lut_in[2][2:0] = { cout[1], add3l[1] , add4[1]} ;
-	assign lut_in[3][2:0] = { cout[2], add1r    , add4[2]} ; // merge final-addition and carry-feedin.
-	assign lut_in[4][2:0] = { cout[3], add3r[0] , add4[0]} ;
-	assign lut_in[5][2:0] = { cout[4], add3r[1] , add4[1]} ;
-	assign lut_in[6][2:0] = { cout[5],     1'b0 , add4[2]} ;	// msb calc
+	assign lut_in[ 0][2:0] = {     1'b0, add1[0]   ,       1'b0} ;	// carry feed in of add1
+	assign lut_in[ 1][2:0] = { cout[ 0], add3[0][0], add4[0][0]} ;
+	assign lut_in[ 2][2:0] = { cout[ 1], add3[0][1], add4[0][1]} ;
+	assign lut_in[ 3][2:0] = { cout[ 2], add1[1]   , add4[0][2]} ; // merge msb addition and carry-feedin.
+	assign lut_in[ 4][2:0] = { cout[ 3], add3[1][0], add4[1][0]} ;
+	assign lut_in[ 5][2:0] = { cout[ 4], add3[1][1], add4[1][1]} ;
+	assign lut_in[ 6][2:0] = { cout[ 5], add1[2]   , add4[1][2]} ; // merge msb addition and carry-feedin.
+	assign lut_in[ 7][2:0] = { cout[ 6], add3[2][0], add4[2][0]} ;
+	assign lut_in[ 8][2:0] = { cout[ 7], add3[2][1], add4[2][1]} ;
+	assign lut_in[ 9][2:0] = { cout[ 8], add1[3]   , add4[2][2]} ; // merge msb addition and carry-feedin.
+	assign lut_in[10][2:0] = { cout[ 9], add3[3][0], add4[3][0]} ;
+	assign lut_in[11][2:0] = { cout[10], add3[3][1], add4[3][1]} ;
+	assign lut_in[12][2:0] = { cout[11], add1[4]   , add4[3][2]} ; // merge msb addition and carry-feedin.
+	assign lut_in[13][2:0] = { cout[12], add3[4][0], add4[4][0]} ;
+	assign lut_in[14][2:0] = { cout[13], add3[4][1], add4[4][1]} ;
+	assign lut_in[15][2:0] = { cout[14],       1'b0, add4[4][2]} ;	// final msb addition
 	
 	// Timing analyser might not know about the merge.
 	// Will need to false path between add1r->add8l[2] and cin,add4[2]->cout 
 
-	// Build data into sums*3+1 LE's into a carry chain;
-	logic [6:0] sout; // sum output bits, we'll subsample
-	
 	// Now the LE manually instantiated
 	genvar gg;
 	generate
-		for( gg = 0; gg < 7; gg++ ) begin : _add8_chain
-			fiftyfivenm_lcell_comb #(
+		for( gg = 0; gg < 16; gg++ ) begin : _add8_chain
+			fiftyfivenm_lcell_comb #( // twas hard to find this
 				.dont_touch ( "off" ),
 				.lpm_type   ( "fiftyfivenm_lcell_comb"), // Does this infer Max10 is a 55nm chip?
-				.sum_lutc_input ( "cin" ),					
-				.lut_mask 	( (gg==0) ? 16'h00CC :		// Sum=0      , Carry = B
-								  (gg==1) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg==2) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg==3) ? 16'h5A33 :		// Sum=A  + C , Carry = !B
-								  (gg==4) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg==5) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								/*(gg==6)*/ 16'hA500 )     // Sum=A  +!C    
+				.sum_lutc_input ( "cin" ),	// set arithmetic mode.				
+				.lut_mask 	( (gg== 0) ? 16'h00CC :		// Sum=0      , Carry =  B
+								  (gg== 1) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
+								  (gg== 2) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
+								  (gg== 3) ? 16'h5A33 :		// Sum=A  + C , Carry = !B
+								  (gg== 4) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
+								  (gg== 5) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
+								  (gg== 6) ? 16'hA5CC :		// Sum=A  +!C , Carry =  B
+								  (gg== 7) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
+								  (gg== 8) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
+								  (gg== 9) ? 16'h5A33 :		// Sum=A  + C , Carry = !B
+								  (gg==10) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
+								  (gg==11) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
+								  (gg==12) ? 16'hA5CC :		// Sum=A  +!C , Carry =  B
+								  (gg==13) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
+								  (gg==14) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
+								/*(gg==15)*/ 16'h5A00 )		// Sum=A  + C , Carry = 0
 			) _add8s (
 				.dataa	(lut_in[gg][0]),
 				.datab	(lut_in[gg][1]),
@@ -518,19 +489,9 @@ module add431_cell
 		end // gg
 	endgenerate
 	
-	// Skipping sout[0] assign the 3-bit add8 connections
-	assign add8l[2:0] = sout[3:1];
-	assign add8r[2:0] = sout[6:4];
-	
-	// life generation calc
-	always_ff @(posedge clk) begin
-		out[0]<= ((( add8l[2:0]==3 ) &&  ireg[1][1] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-				    (( add8l[2:0]==2 ) &&  ireg[1][1] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-				    (( add8l[2:0]==3 ) && !ireg[1][1] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
-		out[1] <= ((( add8r[2:0]==3 ) &&  ireg[2][1] ) ||  // 4 alive of which we are 1 --> rule: alive and 3 neighbours --> stay alive
-				     (( add8r[2:0]==2 ) &&  ireg[2][1] ) ||  // 3 alive of which we are 1 --> rule: alive and 2 neighbours --> stay Alive
-				     (( add8r[2:0]==3 ) && !ireg[2][1] )) 	  // 3 alive and we are not    --> rule:  dead and 3 neighbours --> newly Alive
-												 ? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+	// Assign the add8 outputs from sout skipping sout[0]
+	always_comb begin
+		for( int ii = 0; ii < 5; ii++ )
+			add8[ii][2:0] = sout[3*(ii+1)-:3];
 	end
 endmodule
