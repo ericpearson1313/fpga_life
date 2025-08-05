@@ -255,23 +255,60 @@ module life_engine_packed #(
 	
 	// Add 8 adders
 
+	//always_comb begin
+	//	for( int gg = 0; gg < GENS; gg++ ) begin
+	//		for( int xx = 0 ; xx < WIDTH; xx+=3 ) // |=*
+	//			add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+	//								{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
+	//								cell_array[gg][1][(xx==WIDTH-1)?0:(xx+1)] ;
+	//		for( int xx = 1 ; xx < WIDTH; xx+=3 ) // |=*
+	//			add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
+	//								{ 2'b00, add3[gg][xx-1] } + 
+	//								cell_array[gg][1][xx+1] ;
+	//		for( int xx = 2 ; xx < WIDTH; xx+=3 ) // *=|
+	//			add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + 
+	//								{ 2'b00, add3[gg][xx+1] } + 
+	//								cell_array[gg][1][xx-1] ;	 
+	//	end // gg
+	//end
+	
+	// arrange the inputs for the add8's
+	logic [GENS*WIDTH-1:0][5:0] add8_in;	// line up all the add8's inputs (wrap accross generations)
 	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
 			for( int xx = 0 ; xx < WIDTH; xx+=3 ) // |=*
-				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
-									{ 2'b00, add3[gg][(xx==0)?(WIDTH-1):(xx-1)] } +
-									cell_array[gg][1][(xx==WIDTH-1)?0:(xx+1)] ;
+				add8_in[gg*WIDTH+xx] = { add4[gg][xx] ,  add3[gg][(xx==0)?(WIDTH-1):(xx-1)], cell_array[gg][1][(xx==WIDTH-1)?0:(xx+1)] };
 			for( int xx = 1 ; xx < WIDTH; xx+=3 ) // |=*
-				add8[gg][xx] = { 1'b0,  add4[gg][xx] } +
-									{ 2'b00, add3[gg][xx-1] } + 
-									cell_array[gg][1][xx+1] ;
+				add8_in[gg*WIDTH+xx] = { add4[gg][xx] ,  add3[gg][xx-1]                    , cell_array[gg][1][xx+1] };
 			for( int xx = 2 ; xx < WIDTH; xx+=3 ) // *=|
-				add8[gg][xx] = { 1'b0,  add4[gg][xx-1] } + 
-									{ 2'b00, add3[gg][xx+1] } + 
-									cell_array[gg][1][xx-1] ;	 
+				add8_in[gg*WIDTH+xx] = { add4[gg][xx-1], add3[gg][xx+1]                    , cell_array[gg][1][xx-1] };	 
 		end // gg
 	end
-
+	
+	
+	// generate Adders
+	logic [GENS*WIDTH-1+5:0][2:0] vec8;
+	genvar kk;
+	generate
+		for( kk = 0; kk < (GENS*WIDTH); kk+=5 ) begin : _gen431
+			add431_cell _add431(
+				.in	( {   ((kk+0)>=GENS*WIDTH)?8'h00:add8_in[kk+0], 
+								((kk+1)>=GENS*WIDTH)?8'h00:add8_in[kk+1], 
+								((kk+2)>=GENS*WIDTH)?8'h00:add8_in[kk+2], 
+								((kk+3)>=GENS*WIDTH)?8'h00:add8_in[kk+3], 
+								((kk+4)>=GENS*WIDTH)?8'h00:add8_in[kk+4] } ),
+				.add8  ( vec8[kk+4-:5] )
+			);
+		end
+	endgenerate
+				
+	// Connect up the add8 outputs
+	always_comb begin
+		for( int gg = 0; gg < GENS; gg++ )
+			for( int xx = 0; xx < WIDTH; xx++ )
+				add8[gg][xx] = vec8[gg*WIDTH+xx];
+	end
+				
 	// Calculate cell state
 	always_ff @(posedge clk) begin
 		for( int gg = 0; gg < GENS; gg++ )
@@ -409,18 +446,18 @@ endmodule
 // Implement 5 add8 in a single carry chain of 5*3+1=16 cells
 module add431_cell
 	(
-		input  logic [0:4][7:0] in,	// 5 sets of 8bits { add4[2:0], addr3[1:0], add1 }
-		output logic [0:4][2:0] add8 // Sum of 8 with in 3-bits with 8 wrapping to 0; 
+		input  logic [4:0][5:0] in,	// 5 sets of 6bits { add4[2:0], addr3[1:0], add1 }
+		output logic [4:0][2:0] add8 // Sum of 8 with in 3-bits with 8 wrapping to 0; 
 	);
 
-	logic [0:4][2:0] add4;
-	logic [0:4][1:0] add3;
+	logic [4:0][2:0] add4;
+	logic [4:0][1:0] add3;
 	logic [0:4]      add1; // null operation: sum of 1 bit 
 	
-	// First stage adders
+	// Extractd First stage adder inputs
 	always_comb begin
 		for( int ii = 0; ii < 5; ii++ )
-			{ add4[ii][2:0], add3[ii][1:0], add1[ii] } = in[ii][7:0];
+			{ add4[ii][2:0], add3[ii][1:0], add1[ii] } = in[ii][5:0];
 	end
 
 	// now we build 5 adders: add8[ii] = add4[ii] + add3[ii] + add1[ii] 
