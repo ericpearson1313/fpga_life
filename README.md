@@ -71,7 +71,7 @@ Would love to work on and even 1000x faster version some day.....
 
 Eric
 
-## Update: 
+## V2 Update 6.1 Mhz: 
 10x performace by replicating the row (256x1) Life cell array as 10 row generations of 256x1. This design now utilizes 94% of the fpga.
 Also completed the torus top bottom wrapping by advancing the buffer pointer 10 rows after each pass.
 The performance is now 6,172,620 (5e2fcc) generations per second, a measured 8.45x perf improvement.
@@ -83,6 +83,13 @@ I'm going to examine some 2D array arrangements to see if I can increase the lif
 A 2D life array implementation would be ideal for extension to larger (10Kx10K) cell arrays, but would have
 a bit more complexity in the overlaps. Alternatively a multi-row implementation say 256x8 would run in the current
 framework. Hmm...
+
+## V3 Update 6.6 Mhz: 
+The current life cell is based upon adding 3 columns of 3 cells and then re-using these partial sums each 3 times. The 3 partial sums of 2 bits are then summed for each cell. This gives 13 LE/cell, but with the sharing of partial sums it becomes 9 LE/cell on average.
+Looking at other arrangements a |==| arangement gives 9 LE/cell, and with sharing will average 7.3 LE/cell. However this assumed the final adder would fit in 3 LE. However the tool kept using 4 cells. This forced a deep dive and actual cells instantiation with WYSIWYG primatives with the unlikely name of fiftyfivenm_lcell_comb() where the actuall cell luts and carry chain configuration are manually provided. Using this means I was able to pack 5 of this adders in a 16-LE LAB. This gave me a theoretical 7.5 LE/cell. When compiled I was able to get 11 rows compiled into the FPGA (vs 10). This utilized 100% of the fpga. Running the measurements gave about 6.6 Million operations. About 8% peformance improvement for *alot* of effort.
+
+I do plan on looking at extension to a slightly larger array (say 1Kx256) keeping the same array, as once this is mastered any size of array could be used. It would force addressing overlaps and video a bit differently. Hmm.. 
+
 
 
 
