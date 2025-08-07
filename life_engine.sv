@@ -488,33 +488,30 @@ module add431_cell
 	assign lut_in[14][2:0] = { cout[13], add3[4][1], add4[4][1]} ;
 	assign lut_in[15][2:0] = { cout[14],       1'b0, add4[4][2]} ;	// final msb addition
 	
-	// Timing analyser might not know about the merge.
-	// Will need to false path between add1r->add8l[2] and cin,add4[2]->cout 
-
 	// Now the LE manually instantiated
 	genvar gg;
 	generate
 		for( gg = 0; gg < 16; gg++ ) begin : _add8_chain
 			fiftyfivenm_lcell_comb #( // twas hard to find this
-				.dont_touch ( "off" ),
-				.lpm_type   ( "fiftyfivenm_lcell_comb"), // Does this infer Max10 is a 55nm chip?
+				.dont_touch ( "off" ), // Allows synth to swapA,B Inputs and account for carry inversions
+				.lpm_type   ( "fiftyfivenm_lcell_comb"), // infers Max10 is a 55nm chip?
 				.sum_lutc_input ( "cin" ),	// set arithmetic mode.				
-				.lut_mask 	( (gg== 0) ? 16'h00CC :		// Sum=0      , Carry =  B
-								  (gg== 1) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg== 2) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg== 3) ? 16'h5A33 :		// Sum=A  + C , Carry = !B
-								  (gg== 4) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg== 5) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg== 6) ? 16'hA5CC :		// Sum=A  +!C , Carry =  B
-								  (gg== 7) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg== 8) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg== 9) ? 16'h5A33 :		// Sum=A  + C , Carry = !B
-								  (gg==10) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								  (gg==11) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg==12) ? 16'hA5CC :		// Sum=A  +!C , Carry =  B
-								  (gg==13) ? 16'h9617 :		// Sum=A+B+ C , Carry = !( A&B| C&B|A& C )
-								  (gg==14) ? 16'h698E :		// Sum=A+B+!C , Carry =    A&B|!C&B|A&!C
-								/*(gg==15)*/ 16'h5A00 )		// Sum=A  + C , Carry = 0
+				.lut_mask 	( (gg== 0) ? 16'h00CC :		// Sum=0     , Carry = B
+								  (gg== 1) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
+								  (gg== 2) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
+								  (gg== 3) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg== 4) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
+								  (gg== 5) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
+								  (gg== 6) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg== 7) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
+								  (gg== 8) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
+								  (gg== 9) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg==10) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
+								  (gg==11) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
+								  (gg==12) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg==13) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
+								  (gg==14) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
+								/*(gg==15)*/ 16'h5A00 )		// Sum=A  +C , Carry = 0
 			) _add8s (
 				.dataa	(lut_in[gg][0]),
 				.datab	(lut_in[gg][1]),
