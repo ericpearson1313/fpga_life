@@ -12,7 +12,7 @@ module life_engine_2D #(
 	input clk,
 	input reset,
 	// Memory Control
-	input logic [DBITS-1:0] raddr, // also used for init writes
+	input logic [2:0][2:0][DBITS-1:0] raddr, // also used for init writes
 	input logic [DBITS-1:0] waddr,
 	input	logic we,
 	// cell array shift input
@@ -45,9 +45,9 @@ module life_engine_2D #(
 								( genii == 9 ) ? raddr[2][0] : // LL
 								( genii == 10) ? raddr[2][1] : // Bot
 								( genii == 11) ? raddr[2][2] : // LR
-								                 raddr[1][1] : // Center array
+								                 raddr[1][1] ),// Center array
 				.wraddress( waddr ),
-				.wren( we[genii] ),
+				.wren( we ),
 				.q( mem_dout[genii] )
 			);
 		end
@@ -63,7 +63,7 @@ module life_engine_2D #(
 	always_ff @(posedge clk) begin
 		ld_del[1:0] <= { ld_del[0], ld };
 		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel[2:0] };
-		if( ld_del[1] ) dout <= mem_rd_array[ld_sel_del[4:0]]; // latch row for video ***ASYNC after DELAY*** load and shift
+		if( ld_del[1] ) dout <= mem_rd_array[ld_sel_del[1][4:0]]; // latch row for video ***ASYNC after DELAY*** load and shift
 	end
 
 	// Build life data input array (with overlap) from the different memories
@@ -87,9 +87,9 @@ module life_engine_2D #(
 					cell_input[yy][xx] = mem_dout[6][(yy-0)*GENS+(xx-GENS-WIDTH)];
 				else if ( xx < GENS && yy >= GENS && yy < GENS+HEIGHT ) // LEFT
 					cell_input[yy][xx] = mem_dout[7][(yy-GENS)*GENS+xx];
-				else if ( xx >= GENS+WIDTH && yy >= GENS && yy < GENS+HEIGHT // RIGHT
+				else if ( xx >= GENS+WIDTH && yy >= GENS && yy < GENS+HEIGHT ) // RIGHT
 					cell_input[yy][xx] = mem_dout[8][(yy-GENS)*GENS+(xx-GENS-WIDTH)];
-				else if ( xx < GENS && YY >= GENS+HEIGHT ) // LL
+				else if ( xx < GENS && yy >= GENS+HEIGHT ) // LL
 					cell_input[yy][xx] = mem_dout[9][(yy-GENS-HEIGHT)*GENS+(xx-0)];
 				else if ( xx >= GENS && xx < WIDTH+GENS && yy >= GENS+HEIGHT ) // Bot
 					cell_input[yy][xx] = mem_dout[10][(yy-GENS-HEIGHT)*WIDTH+(xx-GENS)];
@@ -103,14 +103,16 @@ module life_engine_2D #(
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0] cell_next; // comb Outputs of each generation	 
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0] cell_array;	 // reggister Inputs for each generation
 	always_ff @(posedge clk) begin
-		for( int yy = 0; yy < HEIGHT+2*GENS-2*gg; yy++ ) begin 
-			for( int xx = 0; xx < WIDTH+2*GENS-2*gg; xx++ ) begin
-				cell_array[0][yy][xx] <= cell_input[yy][xx];
-				for( int gg = 1; gg < GENS; gg++ ) begin
-					cell_array[gg] <= cell_next[gg-1];
-				end // gg
-			end //xx
-		end //yy
+		for( int gg = 1; gg < GENS; gg++ ) begin
+			for( int yy = 0; yy < HEIGHT+2*GENS; yy++ ) begin 
+				for( int xx = 0; xx < WIDTH+2*GENS; xx++ ) begin
+					if( gg == 0 ) 
+						cell_array[0][yy][xx] <= cell_input[yy][xx];
+					else
+						cell_array[gg][yy][xx] <= cell_next[gg-1][yy][xx];
+				end // xx
+			end //yy
+		end //gg
 	end // always
 	
 	// Input adders
@@ -118,8 +120,8 @@ module life_engine_2D #(
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][2:0] add4;	 // = shape
 	always_comb begin
 		for( int gg = 0; gg < GENS; gg++ ) begin
-			for( int yy = 1; yy < HEIGHT+2*GENS-2*gg-1; yy++ ) begin // no sums needed for first or last rows
-				for( int xx = 0; xx < WIDTH+2*GENS-2*gg-1; xx++ ) // =shape, skip last column
+			for( int yy = 1; yy < HEIGHT+2*GENS-gg-2; yy++ ) begin // no sums needed for first or last rows
+				for( int xx = 0; xx < WIDTH+2*GENS-gg-2; xx++ ) // =shape, skip last column
 					add4[gg][yy][xx] =  	{ 2'b00, cell_array[gg][yy-1][xx] } +
 											   { 2'b00, cell_array[gg][yy-1][xx+1] } +
 											   { 2'b00, cell_array[gg][yy+1][xx] } +
@@ -140,8 +142,8 @@ module life_engine_2D #(
 		int add8_in = 0;
 		int add8_idx = 0;
 		for( int gg = 0; gg < GENS; gg++ ) begin // generations
-			for( int yy = gg; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // narrowing width
-				for( int xx = gg; xx < WIDTH+2*GENS-gg-1; xx++ ) begin // narrowing width
+			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-2; yy++ ) begin // narrowing height
+				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-2; xx++ ) begin // narrowing width
 					add8_in[add8_idx++] = 
 						(xx%3==0) ? { add4[gg][yy][xx  ], add3[gg][yy][xx-1], cell_array[gg][yy][xx+1] } : // |=*
 						(xx%3==1) ? { add4[gg][yy][xx  ], add3[gg][yy][xx-1], cell_array[gg][yy][xx+1] } : // |=*
@@ -170,12 +172,12 @@ module life_engine_2D #(
 	endgenerate
 				
 	// unpack the add8 outputs
-	logic [GENS*(WIDTH+2*GENS)*(HEIGHT+2*GENS)-1+5:0][2:0] add8_out_b;
+	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][2:0] add8_out_b;
 	always_comb begin
 		int add8_idx = 0;
 		for( int gg = 0; gg < GENS; gg++ ) begin // generations
-			for( int yy = gg; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // narrowing width
-				for( int xx = gg; xx < WIDTH+2*GENS-gg-1; xx++ ) begin // narrowing width
+			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-2; yy++ ) begin // narrowing width
+				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-2; xx++ ) begin // narrowing width
 					add8_out_b[gg][yy][xx] = add8_out_a[add8_idx++];
 				end // xx
 			end // yy
@@ -187,9 +189,9 @@ module life_engine_2D #(
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0]      orig; // de	
 	always_ff @(posedge clk) begin
 		for( int gg = 0; gg < GENS; gg++ ) begin // generations
-			for( int yy = gg; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // narrowing width
-				for( int xx = gg; xx < WIDTH+2*GENS-gg-1; xx++ ) begin // narrowing width
-					add8[gg][yy][xx] <= add8_out_a[gg][yy][xx];
+			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-2; yy++ ) begin // narrowing width
+				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-2; xx++ ) begin // narrowing width
+					add8[gg][yy][xx] <= add8_out_b[gg][yy][xx];
 					orig[gg][yy][xx] <= cell_array[gg][yy][xx]; // and delay orig cell to keep aligned					
 				end // xx
 			end // yy
@@ -199,8 +201,8 @@ module life_engine_2D #(
 	// Cell life state calculated 
 	always_comb begin : _life_cell
 		for( int gg = 0; gg < GENS; gg++ ) begin
-			for( int xx = gg; xx < WIDTH+2*GENS-gg-1 ; xx++ ) begin
-				for( int yy = gg; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // ***LIFE***
+			for( int xx = gg+1; xx < WIDTH+2*GENS-gg-2 ; xx++ ) begin
+				for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-2; yy++ ) begin // ***LIFE***
 					cell_next[gg][yy][xx] = ((( add8[gg][yy][xx]==3 ) &&  orig[gg][yy][xx] ) ||  // rule: alive and 3 neighbours --> stay alive
 													 (( add8[gg][yy][xx]==2 ) &&  orig[gg][yy][xx] ) ||  // rule: alive and 2 neighbours --> stay Alive
 													 (( add8[gg][yy][xx]==3 ) && !orig[gg][yy][xx] ))    // rule:  dead and 3 neighbours --> newly Alive
