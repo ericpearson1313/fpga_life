@@ -32,15 +32,15 @@ module life_engine_2D #(
 	// nine memories for 3x3 neighbour hood. 
 	// Neighbors represent neighbour location (We swap when writing)	
 	// 
-	logic [GENS*GENS   -1+31:0] mem00_din, mem00_dout;
-	logic [GENS*GENS   -1+31:0] mem02_din, mem02_dout;
-	logic [GENS*GENS   -1+31:0] mem20_din, mem20_dout;
-	logic [GENS*GENS   -1+31:0] mem22_din, mem22_dout;
-	logic [GENS*HEIGHT -1+31:0] mem10_din, mem10_dout;
-	logic [GENS*HEIGHT -1+31:0] mem12_din, mem12_dout;
-	logic [GENS*WIDTH  -1+31:0] mem01_din, mem01_dout;
-	logic [GENS*WIDTH  -1+31:0] mem21_din, mem21_dout;
-	logic [WIDTH*HEIGHT-1+31:0] mem11_din, mem11_dout;
+	logic [GENS*GENS   -1+31:0] mem00_din, mem00_dout; // UL
+	logic [GENS*GENS   -1+31:0] mem02_din, mem02_dout;	// UR
+	logic [GENS*GENS   -1+31:0] mem20_din, mem20_dout;	// LL
+	logic [GENS*GENS   -1+31:0] mem22_din, mem22_dout;	// LR
+	logic [GENS*HEIGHT -1+31:0] mem10_din, mem10_dout;	// Top
+	logic [GENS*HEIGHT -1+31:0] mem12_din, mem12_dout;	// Bot
+	logic [GENS*WIDTH  -1+31:0] mem01_din, mem01_dout;	// Left
+	logic [GENS*WIDTH  -1+31:0] mem21_din, mem21_dout;	// Right
+	logic [WIDTH*HEIGHT-1+31:0] mem11_din, mem11_dout;	// center core
 	
 
 	// Generate sufficient 32bit mems to cover each of the 9 spatial arrays 
@@ -73,8 +73,8 @@ module life_engine_2D #(
 	assign dout_mux = mem11_dout[HEIGHT*WIDTH-1:0]; // reformat central array as rows
 	always_ff @(posedge clk) begin
 		ld_del[1:0] <= { ld_del[0], ld };
-		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel[5:0] };
-		if( ld_del[1] ) dout <= dout_mux[ld_sel_del[1][5:0]]; // latch row for video ***ASYNC after DELAY*** load and shift
+		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel };
+		if( ld_del[1] ) dout <= dout_mux[ld_sel_del[1]]; // latch row for video ***ASYNC after DELAY*** load and shift
 	end
 
 	// Build contiguous life data input array (with overlaps) from the nine different memories
@@ -125,7 +125,7 @@ module life_engine_2D #(
 											   { 2'b00, cell_in[gg][yy-1][xx+1] } +
 											   { 2'b00, cell_in[gg][yy+1][xx  ] } +
 											   { 2'b00, cell_in[gg][yy+1][xx+1] };
-				for( int xx = 0; xx < WIDTH+2*GENS-0; xx++ ) // |shape, every column
+				for( int xx = 0; xx < WIDTH+2*GENS; xx++ )   // |shape, every column
 					add3v[gg][yy][xx]  = { 1'b0 , cell_in[gg][yy-1][xx  ] } +
 							  					{ 1'b0 , cell_in[gg][yy  ][xx  ] } +
 												{ 1'b0 , cell_in[gg][yy+1][xx  ] } ;
@@ -169,11 +169,11 @@ module life_engine_2D #(
 		for( gengg = 0; gengg < GENS; gengg++ ) begin : _gen431_gen
 			for( genkk = 0; genkk < (WIDTH+2*(GENS-gengg-1)) * (HEIGHT+2*(GENS-gengg-1)); genkk+=5 ) begin : _gen431_cell
 			add431_cell _add431(
-				.in	( {   ((genkk+4)>=GENS*WIDTH)?6'h00:add8_in[gengg][genkk+4], 
-								((genkk+3)>=GENS*WIDTH)?6'h00:add8_in[gengg][genkk+3], 
-								((genkk+2)>=GENS*WIDTH)?6'h00:add8_in[gengg][genkk+2], 
-								((genkk+1)>=GENS*WIDTH)?6'h00:add8_in[gengg][genkk+1], 
-								((genkk+0)>=GENS*WIDTH)?6'h00:add8_in[gengg][genkk+0] } ),
+				.in	( {   add8_in[gengg][genkk+4], 
+								add8_in[gengg][genkk+3], 
+								add8_in[gengg][genkk+2], 
+								add8_in[gengg][genkk+1], 
+								add8_in[gengg][genkk+0] } ),
 				.add8  ( add8_out_a[gengg][genkk+4-:5] )
 			);
 			end // genkk
