@@ -211,18 +211,18 @@ assign speaker_n = !speaker;
 //
 /////////////////////
 /////////////////////////////
-	parameter WIDTH = 256;	// Datapath width, image width
+	parameter WIDTH = 37;	// Datapath width, image width
 	parameter DEPTH = 256;	// memory depth, image height
-	parameter HEIGHT = 8;	// Datapath height
+	parameter HEIGHT = 36;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 11;	// hardware Generations per pass
+	parameter GENS  = 2;	// hardware Generations per pass
 /////////////////////////////
 
 
 	// Integrate the life engine
-	logic [WIDTH-1:0] init_word;
+	logic [WIDTH*HEIGHT-1:0] init_word;
 	logic [WIDTH-1:0] life_word; // latched read word
-	logic [DBITS-1:0] raddr;
+	logic [2:0][2:0][DBITS-1:0] raddr;
 	logic [DBITS-1:0] waddr;
 	logic we; // write enable of life calc output or current init word
 	logic sh; // shift in a row (from last cycle read)
@@ -230,7 +230,7 @@ assign speaker_n = !speaker;
 	logic we_init; // selects init_word as we data source 
 	logic init;	
 	
-	life_engine_packed #(
+	life_engine_2D #(
 		.WIDTH( WIDTH ),
 		.DEPTH( DEPTH ),
 		.HEIGHT( HEIGHT ),
@@ -244,6 +244,7 @@ assign speaker_n = !speaker;
 		.we( we ),
 		.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
+		.ld_sel( raddr[1][1][5:0] ),
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
 		.init( init ),
 		.init_data( init_word ) // 256 bit
@@ -252,7 +253,7 @@ assign speaker_n = !speaker;
 	// Generate Init word (lfsr for now)
 	// LFSR from: https://datacipy.elektroniche.cz/lfsr_table.pdf
 	
-	logic [WIDTH-1:0] lfsr;
+	logic [255:0] lfsr;
 	always_ff @(posedge clk4 ) begin
 		if( reset ) begin
 				  lfsr <= { 16'b1011000001011000,  
@@ -282,8 +283,10 @@ assign speaker_n = !speaker;
 						 lfsr[245:1] };
 		end
 	end
+	
 
-	assign init_word = lfsr;
+	assign init_word[WIDTH*HEIGHT-1-:256] = lfsr;
+	always_ff @(posedge clk) init_word[WIDTH*HEIGHT-256-1:0] <= { lfsr[0], init_word[WIDTH*HEIGHT-256-1:1 ] };
 	
 
 
@@ -355,8 +358,9 @@ assign speaker_n = !speaker;
 	end		
 	
 	// Address pipe stage 2
+	logic [7:0] caddr; // center address
 	always_ff @( posedge clk4 ) begin
-		raddr <= ( del_read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
+		caddr <= ( del_read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
 		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH + 2); // write is 6 cycle delayed
 		we    <= ( del_read_row >= PIPE_DEPTH && del_read_row <= DONE_COUNT ) || we_init; // write window
 		ld	 	<= ( del_read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
@@ -365,6 +369,17 @@ assign speaker_n = !speaker;
 		// handle video pend flag, rise on blank fall, fall when we see an idle state
 		vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : (del_read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 	end
+	
+	assign raddr[0][0] = caddr[7:0];
+	assign raddr[0][1] = caddr[7:0]+1;
+	assign raddr[0][2] = caddr[7:0]+2;
+	assign raddr[1][0] = caddr[7:0]+3;
+	assign raddr[1][1] = caddr[7:0]+4;
+	assign raddr[1][2] = caddr[7:0]+5;
+	assign raddr[2][0] = caddr[7:0]+6;
+	assign raddr[2][1] = caddr[7:0]+7;
+	assign raddr[2][2] = caddr[7:0]+8;
+	
 	
 	// Generation counters
 	
