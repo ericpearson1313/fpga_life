@@ -3,9 +3,9 @@
 // Memory depth = DEPTH
 module life_engine_2D #(
 	WIDTH = 37,		// Array width = Datapath width
-	DEPTH = 256,	// memory Depth, (ignored, always 256 supported)
+	DEPTH = 256,	// memory Depth, (ignored, always 256 supported, we use M9Ks as 32bit x 256word rams)
 	HEIGHT = 36,	// Datapath height
-	DBITS = 8,		// depth address bitwidth, (ignored, only 8 supported)
+	DBITS = 8,		// depth address bitwidth, (ignored, only 8 supported with M9K rams)
 	GENS  = 2		// hardware Generations per pass
 ) (
 	// System
@@ -15,12 +15,10 @@ module life_engine_2D #(
 	input logic [2:0][2:0][7:0] raddr, // also used for init writes
 	input logic [7:0] waddr,
 	input	logic we,
-	// cell array shift input
-	input logic sh,
 	// External Data Control
 	input logic ld,
-	input logic [5:0] ld_sel, // addressed row in the block
-	output logic [WIDTH-1:0] dout, // data out
+	input logic [HEIGHT-1:0] ld_sel, // row selects for video read OR mux.
+	output logic [WIDTH-1:0] dout, // Selected row OR data out
 	// Init port
 	input logic init,
 	input logic [WIDTH*HEIGHT-1:0] init_data
@@ -42,39 +40,66 @@ module life_engine_2D #(
 	logic [GENS*HEIGHT -1+31:0] mem21_din, mem21_dout;	// Right
 	logic [WIDTH*HEIGHT-1+31:0] mem11_din, mem11_dout;	// center core
 	
+	// Register raddr, waddr, we, large large fanout.
+	// Synth tool intended to replicate regs as need to meet timing.
+	logic [2:0][2:0][7:0] raddr_q; // also used for init writes
+	logic [7:0] 			 waddr_q;
+	logic 					 we_q;
+	always_ff @(posedge clk) begin
+		raddr_q 	<= raddr;
+		we_q 		<= we;
+		waddr_q 	<= waddr; 
+	end
 
 	// Generate sufficient 32bit mems to cover each of the 9 spatial arrays 
 	genvar genii;
 	generate 
 		for( genii = 0; genii < GENS*GENS; genii+=32 ) begin : _mem_corner
-			cell_ram32 _ram00 ( .clock( clk ), .data( mem00_din[genii+31-:32] ), .rdaddress( raddr[0][0] ), .wraddress( waddr ), .wren( we ),	.q( mem00_dout[genii+31-:32] ));
-			cell_ram32 _ram20 ( .clock( clk ), .data( mem20_din[genii+31-:32] ), .rdaddress( raddr[2][0] ), .wraddress( waddr ), .wren( we ),	.q( mem20_dout[genii+31-:32] ));
-			cell_ram32 _ram02 ( .clock( clk ), .data( mem02_din[genii+31-:32] ), .rdaddress( raddr[0][2] ), .wraddress( waddr ), .wren( we ),	.q( mem02_dout[genii+31-:32] ));
-			cell_ram32 _ram22 ( .clock( clk ), .data( mem22_din[genii+31-:32] ), .rdaddress( raddr[2][2] ), .wraddress( waddr ), .wren( we ),	.q( mem22_dout[genii+31-:32] ));
+			cell_ram32 _ram00 ( .clock( clk ), .data( mem00_din[genii+31-:32] ), .rdaddress( raddr_q[0][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem00_dout[genii+31-:32] ));
+			cell_ram32 _ram20 ( .clock( clk ), .data( mem20_din[genii+31-:32] ), .rdaddress( raddr_q[2][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem20_dout[genii+31-:32] ));
+			cell_ram32 _ram02 ( .clock( clk ), .data( mem02_din[genii+31-:32] ), .rdaddress( raddr_q[0][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem02_dout[genii+31-:32] ));
+			cell_ram32 _ram22 ( .clock( clk ), .data( mem22_din[genii+31-:32] ), .rdaddress( raddr_q[2][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem22_dout[genii+31-:32] ));
 		end
 		for( genii = 0; genii < GENS*HEIGHT; genii+=32 ) begin : _mem_edgelr
-			cell_ram32 _ram10 ( .clock( clk ), .data( mem10_din[genii+31-:32] ), .rdaddress( raddr[1][0] ), .wraddress( waddr ), .wren( we ),	.q( mem10_dout[genii+31-:32] ));
-			cell_ram32 _ram12 ( .clock( clk ), .data( mem12_din[genii+31-:32] ), .rdaddress( raddr[1][2] ), .wraddress( waddr ), .wren( we ),	.q( mem12_dout[genii+31-:32] ));
+			cell_ram32 _ram10 ( .clock( clk ), .data( mem10_din[genii+31-:32] ), .rdaddress( raddr_q[1][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem10_dout[genii+31-:32] ));
+			cell_ram32 _ram12 ( .clock( clk ), .data( mem12_din[genii+31-:32] ), .rdaddress( raddr_q[1][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem12_dout[genii+31-:32] ));
 		end
 		for( genii = 0; genii < GENS*WIDTH; genii+=32 ) begin : _mem_edgetb
-			cell_ram32 _ram01 ( .clock( clk ), .data( mem01_din[genii+31-:32] ), .rdaddress( raddr[0][1] ), .wraddress( waddr ), .wren( we ),	.q( mem01_dout[genii+31-:32] ));
-			cell_ram32 _ram21 ( .clock( clk ), .data( mem21_din[genii+31-:32] ), .rdaddress( raddr[2][1] ), .wraddress( waddr ), .wren( we ),	.q( mem21_dout[genii+31-:32] ));
+			cell_ram32 _ram01 ( .clock( clk ), .data( mem01_din[genii+31-:32] ), .rdaddress( raddr_q[0][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem01_dout[genii+31-:32] ));
+			cell_ram32 _ram21 ( .clock( clk ), .data( mem21_din[genii+31-:32] ), .rdaddress( raddr_q[2][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem21_dout[genii+31-:32] ));
 		end
 		for( genii = 0; genii < WIDTH*HEIGHT; genii+=32 ) begin : _mem_core
-			cell_ram32 _ram11 ( .clock( clk ), .data( mem11_din[genii+31-:32] ), .rdaddress( raddr[1][1] ), .wraddress( waddr ), .wren( we ),	.q( mem11_dout[genii+31-:32] ));
+			cell_ram32 _ram11 ( .clock( clk ), .data( mem11_din[genii+31-:32] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem11_dout[genii+31-:32] ));
 		end
 	endgenerate
 
 	
 	// Video Read port
-	logic [1:0] ld_del;
-	logic [1:0][5:0] ld_sel_del;
-	logic [HEIGHT-1:0][WIDTH-1:0] dout_mux;
-	assign dout_mux = mem11_dout[HEIGHT*WIDTH-1:0]; // reformat central array as rows
+	logic [2:0] ld_del;  // del = 2*mem+addr_sel_regs = 3
+	logic [HEIGHT-1:0] ld_sel_reg;
 	always_ff @(posedge clk) begin
-		ld_del[1:0] <= { ld_del[0], ld };
-		ld_sel_del[1:0] <= { ld_sel_del[0], ld_sel };
-		if( ld_del[1] ) dout <= dout_mux[ld_sel_del[1]]; // latch row for video ***ASYNC after DELAY*** load and shift
+		// Delay the load (so aligns with read address
+		ld_del[2:0] <= { ld_del[1:0], ld }; // delay load
+		// Just one layer of regs for the HEIGHT row selects into a large Reduction OR
+		ld_sel_reg[HEIGHT-1:0] <= ld_sel[HEIGHT-1:0]; // 2 regs short of alignment
+	end
+	
+	// Video row select matrix 
+	logic [WIDTH-1:0][HEIGHT-1:0] prod; // AND binary product array
+	always_comb begin
+		for( int yy = 0; yy < HEIGHT; yy++ ) begin
+			for( int xx = 0; xx < WIDTH; xx++ ) begin
+					prod[xx][yy] = ld_sel_reg[yy] & mem11_dout[yy*WIDTH+xx]; // AND row selects with rows of mem read data.
+			end // xx
+		end // yy
+	end // always
+
+	// Video register dout using reduction OR!!!  
+	// Dout.q is wired to ASYNC regs. (TODO source of false_path to video)
+	always_ff @(posedge clk) begin
+		for( int xx = 0; xx < WIDTH; xx++ ) begin
+			dout[xx] <= (ld_del[2]) ? ( | prod[xx] ) : dout[xx]; // <-- reduction OR for the win
+		end // xx
 	end
 
 	// Build contiguous life data input array (with overlaps) from the nine different memories

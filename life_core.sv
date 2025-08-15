@@ -229,6 +229,7 @@ assign speaker_n = !speaker;
 	logic ld; // latch a row into dout (from last cycle)
 	logic we_init; // selects init_word as we data source 
 	logic init;	
+	logic [WIDTH-1:0] ld_sel;
 	
 	life_engine_2D #(
 		.WIDTH( WIDTH ),
@@ -242,9 +243,9 @@ assign speaker_n = !speaker;
 		.raddr( raddr ),
 		.waddr( waddr ),
 		.we( we ),
-		.sh( sh ),
+		//.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
-		.ld_sel( raddr[1][1][5:0] ),
+		.ld_sel( ld_sel ),
 		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
 		.init( init ),
 		.init_data( init_word ) // 256 bit
@@ -284,12 +285,9 @@ assign speaker_n = !speaker;
 		end
 	end
 	
-
 	assign init_word[WIDTH*HEIGHT-1-:256] = lfsr;
 	always_ff @(posedge clk) init_word[WIDTH*HEIGHT-256-1:0] <= { lfsr[0], init_word[WIDTH*HEIGHT-256-1:1 ] };
 	
-
-
 	// Life Control state machine.
 	// Generates cell read and write addresses 
 	// and we and rd signals.
@@ -356,6 +354,15 @@ assign speaker_n = !speaker;
 		del_read_row <= read_row;
 
 	end		
+	
+	// Video row select bits
+	logic [HEIGHT-1:0] sel_row;
+	always_ff @(posedge clk4 ) begin
+		for( int yy = 0; yy < HEIGHT; yy++ ) begin
+			sel_row[yy] <= ( read_row[5:0] == yy ) ? 1'b1 : 1'b0;
+		end // yy
+	end
+	assign ld_sel = sel_row; // connect selects to engine.
 	
 	// Address pipe stage 2
 	logic [7:0] caddr; // center address
