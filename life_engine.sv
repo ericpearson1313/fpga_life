@@ -26,19 +26,19 @@ module life_engine_2D #(
 );
 
 	// Memory
-	// Built up from call_ram_32 = M4K org as 32bx256w, registered I/O 
+	// Built up from call_ram_36 = M9K as 36bx256w, registered I/O 
 	// nine memories for 3x3 neighbour hood. 
 	// Neighbors represent neighbour location (We swap when writing)	
 	// 
-	logic [GENS*GENS   -1+31:0] mem00_din, mem00_dout; // UL
-	logic [GENS*GENS   -1+31:0] mem02_din, mem02_dout;	// UR
-	logic [GENS*GENS   -1+31:0] mem20_din, mem20_dout;	// LL
-	logic [GENS*GENS   -1+31:0] mem22_din, mem22_dout;	// LR
-	logic [GENS*WIDTH  -1+31:0] mem10_din, mem10_dout;	// Top
-	logic [GENS*WIDTH  -1+31:0] mem12_din, mem12_dout;	// Bot
-	logic [GENS*HEIGHT -1+31:0] mem01_din, mem01_dout;	// Left
-	logic [GENS*HEIGHT -1+31:0] mem21_din, mem21_dout;	// Right
-	logic [WIDTH*HEIGHT-1+31:0] mem11_din, mem11_dout;	// center core
+	logic [GENS*GENS   -1+35:0] mem00_din, mem00_dout; // UL
+	logic [GENS*GENS   -1+35:0] mem02_din, mem02_dout;	// UR
+	logic [GENS*GENS   -1+35:0] mem20_din, mem20_dout;	// LL
+	logic [GENS*GENS   -1+35:0] mem22_din, mem22_dout;	// LR
+	logic [GENS*WIDTH  -1+35:0] mem01_din, mem01_dout;	// Top
+	logic [GENS*WIDTH  -1+35:0] mem21_din, mem21_dout;	// Bot
+	logic [GENS*HEIGHT -1+35:0] mem10_din, mem10_dout;	// Left
+	logic [GENS*HEIGHT -1+35:0] mem12_din, mem12_dout;	// Right
+	logic [WIDTH*HEIGHT-1+35:0] mem11_din, mem11_dout;	// center core
 	
 	// Register raddr, waddr, we, large large fanout.
 	// Synth tool intended to replicate regs as need to meet timing.
@@ -51,29 +51,47 @@ module life_engine_2D #(
 		waddr_q 	<= waddr; 
 	end
 
+	
+	// Map mem11_din/dout to use tiled 6x6 memories
+	logic [HEIGHT/6:0][WIDTH/6:0][5:0][5:0] mem6x6_din, mem6x6_dout;
+	always_comb begin
+		for( int xx = 0; xx < WIDTH; xx++ ) 
+			for( int yy = 0; yy < HEIGHT; yy++ ) begin
+						mem6x6_din[yy/6][xx/6][yy%6][xx%6] = mem11_din[yy*WIDTH+xx];
+						mem11_dout[yy*WIDTH+xx] = mem6x6_dout[yy/6][xx/6][yy%6][xx%6];
+			end //yy
+	end // comb
+	
 	// Generate sufficient 32bit mems to cover each of the 9 spatial arrays 
-	genvar genii;
+	genvar genii, genjj;
 	generate 
-		for( genii = 0; genii < GENS*GENS; genii+=32 ) begin : _mem_corner
-			cell_ram32 _ram00 ( .clock( clk ), .data( mem00_din[genii+31-:32] ), .rdaddress( raddr_q[0][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem00_dout[genii+31-:32] ));
-			cell_ram32 _ram20 ( .clock( clk ), .data( mem20_din[genii+31-:32] ), .rdaddress( raddr_q[2][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem20_dout[genii+31-:32] ));
-			cell_ram32 _ram02 ( .clock( clk ), .data( mem02_din[genii+31-:32] ), .rdaddress( raddr_q[0][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem02_dout[genii+31-:32] ));
-			cell_ram32 _ram22 ( .clock( clk ), .data( mem22_din[genii+31-:32] ), .rdaddress( raddr_q[2][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem22_dout[genii+31-:32] ));
+		for( genii = 0; genii < GENS*GENS; genii+=36 ) begin : _mem_corner
+			cell_ram36 _ram00 ( .clock( clk ), .data( mem00_din[genii+35-:36] ), .rdaddress( raddr_q[0][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem00_dout[genii+35-:36] ));
+			cell_ram36 _ram20 ( .clock( clk ), .data( mem20_din[genii+35-:36] ), .rdaddress( raddr_q[2][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem20_dout[genii+35-:36] ));
+			cell_ram36 _ram02 ( .clock( clk ), .data( mem02_din[genii+35-:36] ), .rdaddress( raddr_q[0][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem02_dout[genii+35-:36] ));
+			cell_ram36 _ram22 ( .clock( clk ), .data( mem22_din[genii+35-:36] ), .rdaddress( raddr_q[2][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem22_dout[genii+35-:36] ));
 		end
-		for( genii = 0; genii < GENS*HEIGHT; genii+=32 ) begin : _mem_edgelr
-			cell_ram32 _ram10 ( .clock( clk ), .data( mem10_din[genii+31-:32] ), .rdaddress( raddr_q[1][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem10_dout[genii+31-:32] ));
-			cell_ram32 _ram12 ( .clock( clk ), .data( mem12_din[genii+31-:32] ), .rdaddress( raddr_q[1][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem12_dout[genii+31-:32] ));
+		for( genii = 0; genii < GENS*HEIGHT; genii+=36 ) begin : _mem_edgelr
+			cell_ram36 _ram10 ( .clock( clk ), .data( mem10_din[genii+35-:36] ), .rdaddress( raddr_q[1][0] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem10_dout[genii+35-:36] ));
+			cell_ram36 _ram12 ( .clock( clk ), .data( mem12_din[genii+35-:36] ), .rdaddress( raddr_q[1][2] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem12_dout[genii+35-:36] ));
 		end
-		for( genii = 0; genii < GENS*WIDTH; genii+=32 ) begin : _mem_edgetb
-			cell_ram32 _ram01 ( .clock( clk ), .data( mem01_din[genii+31-:32] ), .rdaddress( raddr_q[0][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem01_dout[genii+31-:32] ));
-			cell_ram32 _ram21 ( .clock( clk ), .data( mem21_din[genii+31-:32] ), .rdaddress( raddr_q[2][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem21_dout[genii+31-:32] ));
+		for( genii = 0; genii < GENS*WIDTH; genii+=36 ) begin : _mem_edgetb
+			cell_ram36 _ram01 ( .clock( clk ), .data( mem01_din[genii+35-:36] ), .rdaddress( raddr_q[0][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem01_dout[genii+35-:36] ));
+			cell_ram36 _ram21 ( .clock( clk ), .data( mem21_din[genii+35-:36] ), .rdaddress( raddr_q[2][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem21_dout[genii+35-:36] ));
 		end
-		for( genii = 0; genii < WIDTH*HEIGHT; genii+=32 ) begin : _mem_core
-			cell_ram32 _ram11 ( .clock( clk ), .data( mem11_din[genii+31-:32] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem11_dout[genii+31-:32] ));
+		//for( genii = 0; genii < HEIGHT; genii+= 36 ) begin : _mem_core
+		//	cell_ram36 _ram11 ( .clock( clk ), .data( mem11_din[genii+35-:36] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem11_dout[genii+35-:36] ));
+		//end
+		for( genii = 0; genii < WIDTH; genii+= 6 ) begin : _mem_corex
+			for( genjj = 0; genjj < HEIGHT; genjj+= 6 ) begin : _mem_corey
+				cell_ram36 _ram11 ( .clock( clk ), .data( mem6x6_din[genjj/6][genii/6] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem6x6_dout[genjj/6][genii/6] ));
+			end 
 		end
 	endgenerate
 
 	
+
+
 	// Video Read port
 	logic [2:0] ld_del;  // del = 2*mem+addr_sel_regs = 3
 	logic [HEIGHT-1:0] ld_sel_reg;
