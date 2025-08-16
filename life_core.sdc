@@ -33,24 +33,24 @@ set_false_path -from [get_clocks {_spll|altpll_component|auto_generated|pll1|clk
 #Ignore case of auto generated we_reg to output 
 #The simulataneous raddr=waddr is avoided by design
 #set_false_path -from {life_engine:_life_engine|altsyncram:ram_rtl_0|altsyncram_9q71:auto_generated|ram_block1a100~porta_we_reg} -to {life_engine:_life_engine|cell_array[0][101]}
-set_false_path -from [get_registers {*ram_block*porta_we_reg}] -to [get_registers {life_engine:_life_engine|cell_array*}]
+#set_false_path -from [get_registers {*ram_block*porta_we_reg}] -to [get_registers {life_engine:_life_engine|cell_array*}]
 
 #break up intentionally created carry chains.
 #Break add8 carry chains from cin to cout.
 #suspect the tool eliminates these paths as it looks at the LE lut contents. Can probably not worry about it.
 #need to get correct syntax, names and regular expressions.
-set_false_path -from [get_pins {*add431_cell:*|lut_in[3][2]}]  -to [get_pins {*add431_cell:*|cout[3]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[6][2]}]  -to [get_pins {*add431_cell:*|cout[6]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[9][2]}]  -to [get_pins {*add431_cell:*|cout[9]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[12][2]}] -to [get_pins {*add431_cell:*|cout[12]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[3][2]}]  -to [get_pins {*add431_cell:*|cout[3]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[6][2]}]  -to [get_pins {*add431_cell:*|cout[6]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[9][2]}]  -to [get_pins {*add431_cell:*|cout[9]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[12][2]}] -to [get_pins {*add431_cell:*|cout[12]}]
 #break add8 path from B to sout
-set_false_path -from [get_pins {*add431_cell:*|lut_in[3][1]}]  -to [get_pins {*add431_cell:*|sout[3]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[6][1]}]  -to [get_pins {*add431_cell:*|sout[6]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[9][1]}]  -to [get_pins {*add431_cell:*|sout[9]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[12][1]}] -to [get_pins {*add431_cell:*|sout[12]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[3][1]}]  -to [get_pins {*add431_cell:*|sout[3]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[6][1]}]  -to [get_pins {*add431_cell:*|sout[6]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[9][1]}]  -to [get_pins {*add431_cell:*|sout[9]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[12][1]}] -to [get_pins {*add431_cell:*|sout[12]}]
 #break add8 path from A to cout
-set_false_path -from [get_pins {*add431_cell:*|lut_in[3][0]}]  -to [get_pins {*add431_cell:*|cout[3]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[6][0]}]  -to [get_pins {*add431_cell:*|cout[6]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[9][0]}]  -to [get_pins {*add431_cell:*|cout[9]}]
-set_false_path -from [get_pins {*add431_cell:*|lut_in[12][0]}] -to [get_pins {*add431_cell:*|cout[12]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[3][0]}]  -to [get_pins {*add431_cell:*|cout[3]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[6][0]}]  -to [get_pins {*add431_cell:*|cout[6]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[9][0]}]  -to [get_pins {*add431_cell:*|cout[9]}]
+#set_false_path -from [get_pins {*add431_cell:*|lut_in[12][0]}] -to [get_pins {*add431_cell:*|cout[12]}]
 
