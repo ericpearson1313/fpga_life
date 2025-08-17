@@ -215,13 +215,13 @@ assign speaker_n = !speaker;
 	parameter DEPTH = 256;	// memory depth, image height
 	parameter HEIGHT = 36;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 2;	// hardware Generations per pass
+	parameter GENS  = 1;	// hardware Generations per pass
 /////////////////////////////
 
 
 	// Integrate the life engine
 	logic [WIDTH*HEIGHT-1:0] init_word;
-	logic [WIDTH-1:0] life_word; // latched read word
+	logic [WIDTH*HEIGHT-1:0] life_word; // latched read word
 	logic [2:0][2:0][DBITS-1:0] raddr;
 	logic [DBITS-1:0] waddr;
 	logic we; // write enable of life calc output or current init word
@@ -229,7 +229,6 @@ assign speaker_n = !speaker;
 	logic ld; // latch a row into dout (from last cycle)
 	logic we_init; // selects init_word as we data source 
 	logic init;	
-	logic [WIDTH-1:0] ld_sel;
 	
 	life_engine_2D #(
 		.WIDTH( WIDTH ),
@@ -245,10 +244,9 @@ assign speaker_n = !speaker;
 		.we( we ),
 		//.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
-		.ld_sel( ld_sel ),
-		.dout( life_word ), // 256bit wordlatched by ld flag, for video shift reg
+		.dout( life_word ), // full array wordlatched by ld flag, for video shift reg
 		.init( init ),
-		.init_data( init_word ) // 256 bit
+		.init_data( init_word ) // full array bit
 	);
 	
 	// Generate Init word (lfsr for now)

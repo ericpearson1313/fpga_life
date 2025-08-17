@@ -17,8 +17,7 @@ module life_engine_2D #(
 	input	logic we,
 	// External Data Control
 	input logic ld,
-	input logic [HEIGHT-1:0] ld_sel, // row selects for video read OR mux.
-	output logic [WIDTH-1:0] dout, // Selected row OR data out
+	output logic [HEIGHT*WIDTH-1:0] dout, // snapshot of array
 	// Init port
 	input logic init,
 	input logic [WIDTH*HEIGHT-1:0] init_data
@@ -53,14 +52,14 @@ module life_engine_2D #(
 
 	
 	// Map mem11_din/dout to use tiled 6x6 memories
-	logic [HEIGHT/6:0][WIDTH/6:0][5:0][5:0] mem6x6_din, mem6x6_dout;
-	always_comb begin
-		for( int xx = 0; xx < WIDTH; xx++ ) 
-			for( int yy = 0; yy < HEIGHT; yy++ ) begin
-						mem6x6_din[yy/6][xx/6][yy%6][xx%6] = mem11_din[yy*WIDTH+xx];
-						mem11_dout[yy*WIDTH+xx] = mem6x6_dout[yy/6][xx/6][yy%6][xx%6];
-			end //yy
-	end // comb
+	//logic [HEIGHT/6:0][WIDTH/6:0][5:0][5:0] mem6x6_din, mem6x6_dout;
+	//always_comb begin
+	//	for( int xx = 0; xx < WIDTH; xx++ ) 
+	//		for( int yy = 0; yy < HEIGHT; yy++ ) begin
+	//					mem6x6_din[yy/6][xx/6][yy%6][xx%6] = mem11_din[yy*WIDTH+xx];
+	//					mem11_dout[yy*WIDTH+xx] = mem6x6_dout[yy/6][xx/6][yy%6][xx%6];
+	//		end //yy
+	//end // comb
 	
 	// Generate sufficient 32bit mems to cover each of the 9 spatial arrays 
 	genvar genii, genjj;
@@ -79,45 +78,26 @@ module life_engine_2D #(
 			cell_ram36 _ram01 ( .clock( clk ), .data( mem01_din[genii+35-:36] ), .rdaddress( raddr_q[0][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem01_dout[genii+35-:36] ));
 			cell_ram36 _ram21 ( .clock( clk ), .data( mem21_din[genii+35-:36] ), .rdaddress( raddr_q[2][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem21_dout[genii+35-:36] ));
 		end
-		//for( genii = 0; genii < HEIGHT; genii+= 36 ) begin : _mem_core
-		//	cell_ram36 _ram11 ( .clock( clk ), .data( mem11_din[genii+35-:36] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem11_dout[genii+35-:36] ));
-		//end
-		for( genii = 0; genii < WIDTH; genii+= 6 ) begin : _mem_corex
-			for( genjj = 0; genjj < HEIGHT; genjj+= 6 ) begin : _mem_corey
-				cell_ram36 _ram11 ( .clock( clk ), .data( mem6x6_din[genjj/6][genii/6] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem6x6_dout[genjj/6][genii/6] ));
-			end 
+		for( genii = 0; genii < HEIGHT*WIDTH; genii+= 36 ) begin : _mem_core
+			cell_ram36 _ram11 ( .clock( clk ), .data( mem11_din[genii+35-:36] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem11_dout[genii+35-:36] ));
 		end
+		//for( genii = 0; genii < WIDTH; genii+= 6 ) begin : _mem_corex
+		//	for( genjj = 0; genjj < HEIGHT; genjj+= 6 ) begin : _mem_corey
+		//		cell_ram36 _ram11 ( .clock( clk ), .data( mem6x6_din[genjj/6][genii/6] ), .rdaddress( raddr_q[1][1] ), .wraddress( waddr_q ), .wren( we_q ),	.q( mem6x6_dout[genjj/6][genii/6] ));
+		//	end 
+		//end
 	endgenerate
-
-	
-
 
 	// Video Read port
 	logic [2:0] ld_del;  // del = 2*mem+addr_sel_regs = 3
-	logic [HEIGHT-1:0] ld_sel_reg;
 	always_ff @(posedge clk) begin
 		// Delay the load (so aligns with read address
 		ld_del[2:0] <= { ld_del[1:0], ld }; // delay load
-		// Just one layer of regs for the HEIGHT row selects into a large Reduction OR
-		ld_sel_reg[HEIGHT-1:0] <= ld_sel[HEIGHT-1:0]; // 2 regs short of alignment
 	end
 	
-	// Video row select matrix 
-	logic [WIDTH-1:0][HEIGHT-1:0] prod; // AND binary product array
-	always_comb begin
-		for( int yy = 0; yy < HEIGHT; yy++ ) begin
-			for( int xx = 0; xx < WIDTH; xx++ ) begin
-					prod[xx][yy] = ld_sel_reg[yy] & mem11_dout[yy*WIDTH+xx]; // AND row selects with rows of mem read data.
-			end // xx
-		end // yy
-	end // always
-
-	// Video register dout using reduction OR!!!  
 	// Dout.q is wired to ASYNC regs. (TODO source of false_path to video)
 	always_ff @(posedge clk) begin
-		for( int xx = 0; xx < WIDTH; xx++ ) begin
-			dout[xx] <= (ld_del[2]) ? ( | prod[xx] ) : dout[xx]; // <-- reduction OR for the win
-		end // xx
+		dout <= ( ld_del[2] ) ? mem11_dout[HEIGHT*WIDTH-1:0] : dout;
 	end
 
 	// Build contiguous life data input array (with overlaps) from the nine different memories
@@ -138,7 +118,6 @@ module life_engine_2D #(
 		end // yy	
 	end 
 	
-	
 	// Now the actual cells arrays inputs_ and outputs for cell_arrays for generation life state
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0] cell_out; // comb Outputs of each generation	 
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0] cell_in;	 // reggister Inputs for each generation
@@ -158,33 +137,38 @@ module life_engine_2D #(
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][2:0] add4h;	 // =  shape
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][1:0] add3h;	 // -  shape 1x3 horizontal
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][2:0] add4v;	 // ii shape
+	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0]       orig;  // de	
 	
-	always_comb begin
+	always_ff @(posedge clk) begin //always_comb begin
 		// default add3h = 0; add3v = 0; add4h = 0; add4v = 0;
 		for( int gg = 0; gg < GENS; gg++ ) begin
 			for( int yy = 1; yy < HEIGHT+2*GENS-1; yy++ ) begin // no sums needed for first or last rows
 				for( int xx = 0; xx < WIDTH+2*GENS-1; xx++ ) // =shape, skip last column
-					add4h[gg][yy][xx] =  { 2'b00, cell_in[gg][yy-1][xx  ] } +
+					add4h[gg][yy][xx] <= { 2'b00, cell_in[gg][yy-1][xx  ] } +
 											   { 2'b00, cell_in[gg][yy-1][xx+1] } +
 											   { 2'b00, cell_in[gg][yy+1][xx  ] } +
 											   { 2'b00, cell_in[gg][yy+1][xx+1] };
 				for( int xx = 0; xx < WIDTH+2*GENS; xx++ )   // |shape, every column
-					add3v[gg][yy][xx]  = { 1'b0 , cell_in[gg][yy-1][xx  ] } +
+					add3v[gg][yy][xx] <= { 1'b0 , cell_in[gg][yy-1][xx  ] } +
 							  					{ 1'b0 , cell_in[gg][yy  ][xx  ] } +
 												{ 1'b0 , cell_in[gg][yy+1][xx  ] } ;
 			end //yy
 			for( int yy = 0; yy < HEIGHT+2*GENS-1; yy++ ) begin // no sums needed for last rows
 				for( int xx = 1; xx < WIDTH+2*GENS-1; xx++ ) //ii shape, skip first and last column
-					add4v[gg][yy][xx] =  { 2'b00, cell_in[gg][yy  ][xx-1] } +
+					add4v[gg][yy][xx] <= { 2'b00, cell_in[gg][yy  ][xx-1] } +
 											   { 2'b00, cell_in[gg][yy+1][xx-1] } +
 											   { 2'b00, cell_in[gg][yy  ][xx+1] } +
 											   { 2'b00, cell_in[gg][yy+1][xx+1] };
 			end // yy
 			for( int yy = 0; yy < HEIGHT+2*GENS; yy++ ) begin // sums for all rows
 				for( int xx = 1; xx < WIDTH+2*GENS-1; xx++ ) // -shape, skip first, last column
-					add3h[gg][yy][xx]  = { 1'b0 , cell_in[gg][yy  ][xx-1] } +
+					add3h[gg][yy][xx] <= { 1'b0 , cell_in[gg][yy  ][xx-1] } +
 							  					{ 1'b0 , cell_in[gg][yy  ][xx  ] } +
 												{ 1'b0 , cell_in[gg][yy  ][xx+1] } ;
+			end //y
+			for( int yy = 0; yy < HEIGHT+2*GENS; yy++ ) begin // traverse all rows
+				for( int xx = 0; xx < WIDTH+2*GENS; xx++ ) // and all cols
+					orig[gg][yy][xx] <=    cell_in[gg][yy][xx]; // and delay copy orig cell to keep us aligned					
 			end //y
 		end //gg
 	end
@@ -198,11 +182,11 @@ module life_engine_2D #(
 			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // narrowing height
 				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-1; xx++ ) begin // narrowing width
 					add8_in[gg][(yy-gg-1)*(WIDTH+2*(GENS-gg-1))+xx-gg-1] = // Packed into LSB of add8 input array per generation
-						(xx%3 == 0 && yy%3 == 0) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], cell_in[gg][yy][xx+1] } : // |=* anything
-						(xx%3 == 0 && yy%3 == 1) ? { add4v[gg][yy][xx  ], add3h[gg][yy-1][xx], cell_in[gg][yy+1][xx] } : // |=* vert
-						(xx%3 == 0 && yy%3 == 2) ? { add4v[gg][yy][xx-1], add3h[gg][yy+1][xx], cell_in[gg][yy-1][xx] } : // *=| vert
-						(xx%3 == 1             ) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], cell_in[gg][yy][xx+1] } : // |=* horiz
-					 /*(xx%3 == 2             )*/ { add4h[gg][yy][xx-1], add3v[gg][yy][xx+1], cell_in[gg][yy][xx-1] } ; // *=| horiz
+						(xx%3 == 0 && yy%3 == 0) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], orig[gg][yy][xx+1] } : // |=* anything
+						(xx%3 == 0 && yy%3 == 1) ? { add4v[gg][yy][xx  ], add3h[gg][yy-1][xx], orig[gg][yy+1][xx] } : // |=* vert
+						(xx%3 == 0 && yy%3 == 2) ? { add4v[gg][yy][xx-1], add3h[gg][yy+1][xx], orig[gg][yy-1][xx] } : // *=| vert
+						(xx%3 == 1             ) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], orig[gg][yy][xx+1] } : // |=* horiz
+					 /*(xx%3 == 2             )*/ { add4h[gg][yy][xx-1], add3v[gg][yy][xx+1], orig[gg][yy][xx-1] } ; // *=| horiz
 				end // xx
 			end // yy
 		end // gg
@@ -239,18 +223,13 @@ module life_engine_2D #(
 		end // gg
 	end
 		
-	// Register and connect up add8 outputs and delay orig accordingly
+	// (Register removed?) and connect up add8 outputs and delay orig accordingly
 	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0][2:0] add8; // final add8
-	logic [0:GENS-1][HEIGHT+2*GENS-1:0][WIDTH+2*GENS-1:0]      orig; // de	
-	always_ff @(posedge clk) begin
-		for( int gg = 0; gg < GENS; gg++ ) begin // generations
-			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // narrowing width
-				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-1; xx++ ) begin // narrowing width
-					add8[gg][yy][xx] <= add8_out_b[gg][yy][xx];
-					orig[gg][yy][xx] <=    cell_in[gg][yy][xx]; // and delay orig cell to keep aligned					
-				end // xx
-			end // yy
-		end // gg
+	always_comb begin // always_ff @(posedge clk) begin
+		for( int gg = 0; gg < GENS; gg++ )  // generations
+			for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-1; yy++ )  // narrowing width
+				for( int xx = gg+1; xx < WIDTH+2*GENS-gg-1; xx++ )  // narrowing width
+					add8[gg][yy][xx] = add8_out_b[gg][yy][xx];
 	end
 
 	// Cell life state calculated 
