@@ -211,9 +211,9 @@ assign speaker_n = !speaker;
 //
 /////////////////////
 /////////////////////////////
-	parameter WIDTH = 37;	// Datapath width, image width
+	parameter WIDTH = 45;	// Datapath width, image width
 	parameter DEPTH = 256;	// memory depth, image height
-	parameter HEIGHT = 36;	// Datapath height
+	parameter HEIGHT = 44;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
 	parameter GENS  = 1;	// hardware Generations per pass
 /////////////////////////////
@@ -221,7 +221,7 @@ assign speaker_n = !speaker;
 
 	// Integrate the life engine
 	logic [WIDTH*HEIGHT-1:0] init_word;
-	logic [WIDTH*HEIGHT-1:0] life_word; // latched read word
+	logic [HEIGHT-1:0][WIDTH-1:0] read_word; // latched read word
 	logic [2:0][2:0][DBITS-1:0] raddr;
 	logic [DBITS-1:0] waddr;
 	logic we; // write enable of life calc output or current init word
@@ -244,7 +244,7 @@ assign speaker_n = !speaker;
 		.we( we ),
 		//.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
-		.dout( life_word ), // full array wordlatched by ld flag, for video shift reg
+		.dout( read_word ), // full array wordlatched by ld flag, for video shift reg
 		.init( init ),
 		.init_data( init_word ) // full array bit
 	);
@@ -481,6 +481,9 @@ assign speaker_n = !speaker;
 	logic [9:0] xcnt, ycnt; // Position counters
 	logic blank_d1;
 	logic life_fg, life_bg;
+	
+	logic [WIDTH-1:0] mem_rd;
+	assign mem_rd = read_word[vraddr_cc[5:0]];	//ASYNC MUX
 
 	always @(posedge hdmi_clk) begin
 			// Video Couter
@@ -489,7 +492,7 @@ assign speaker_n = !speaker;
 			ycnt <= ( vsync ) ? 0 : 
 					  ( blank && !blank_d1 ) ? ycnt + 1 : ycnt;
 			// Life cell row shift register, *NOTE* Async load
-			life_row <=( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 ) ? { 1'b0, life_row[255:1] } : /* asyncronous */life_word ;
+			life_row <=( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 ) ? { 1'b0, life_row[255:1] } : /*ASYNC-->*/mem_rd ;
 			// Overlay
 			life_fg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 &&  life_row[0] ) ? 1'b1 : 1'b0;
 			life_bg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 && !life_row[0] ) ? 1'b1 : 1'b0;
