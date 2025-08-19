@@ -296,18 +296,9 @@ assign speaker_n = !speaker;
 	// need an init memory method.
 	// suggest maybe true dual port and use the 2nd write port from a 256bit write reg.
 	
-	// Signalsw from video clock domain
-	logic [DBITS-1:0] vraddr; // video row read addr ASYNC, but stable before use in clk4 domain
-	logic [DBITS-1:0] vraddr_cc; // clk version, to avaoid propagation of false paths
-	logic video_blank;
-	
-	// Blank CC regs and faling pulse detector and ld flag reg.
-	logic [3:0] blank_cc;
-	logic blank_fall;
-	always_ff @(posedge clk4) begin
-		blank_cc <= { blank_cc[2:0], video_blank };
-		blank_fall <= blank_cc[3] &!blank_cc[2];
-	end
+	// Signal from video display (aready in clk4)
+	logic [DBITS-1:0] vraddr; // ASYNC loaded, but stable before use in clk4 domain
+	logic             vload;  // Pulse indication video read request and address stable.
 
 	
 	// Generation read state machine, runs loops if life_go. 
@@ -343,14 +334,13 @@ assign speaker_n = !speaker;
 	end
 	
 	// address pipe stage 1
-
+	logic [DBITS-1:0] adj_vraddr;
 	logic [DBITS-1:0] adj_read_row;
 	logic [DBITS:0] del_read_row;
 	always_ff @( posedge clk4 ) begin
 		adj_read_row <= read_row[DBITS-1:0] + base;
-		vraddr_cc <= vraddr + base;
+		adj_vraddr <= vraddr + base;
 		del_read_row <= read_row;
-
 	end		
 	
 	// Video row select bits
@@ -365,14 +355,14 @@ assign speaker_n = !speaker;
 	// Address pipe stage 2
 	logic [7:0] caddr; // center address
 	always_ff @( posedge clk4 ) begin
-		caddr <= ( del_read_row == IDLE_COUNT ) ? vraddr_cc : adj_read_row[DBITS-1:0]; // over-ride address this cycle
+		caddr <= ( del_read_row == IDLE_COUNT ) ? adj_vraddr : adj_read_row[DBITS-1:0]; // over-ride address this cycle
 		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH + 2); // write is 6 cycle delayed
 		we    <= ( del_read_row >= PIPE_DEPTH && del_read_row <= DONE_COUNT ) || we_init; // write window
 		ld	 	<= ( del_read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
 		init	<= we_init;
 		sh    <= 1;
 		// handle video pend flag, rise on blank fall, fall when we see an idle state
-		vid_pend <= ( !vid_pend && blank_fall ) ? 1'b1 : (del_read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
+		vid_pend <= ( !vid_pend && vload ) ? 1'b1 : (del_read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
 	end
 	
 	assign raddr[0][0] = caddr[7:0];
@@ -469,38 +459,114 @@ assign speaker_n = !speaker;
 		.data_island   ( data_island    )
 	);
 	
-	// Life_row shift register
-	// Loaded from stolen cycle during hblank (by state machine)
-	// WIthin window (256,128) to (511,383) will be in the window
-	// will generate 2 colors.
+	
+//////////////////////////////////////////////////////////////////////////////	
+//////////////////// LIFE  VIDEO  GENERATOR /////////////////////////////////
+
+	// Video lines displaying life cells will be shifted out of register (45 pels wide), which are loaded every WIDTH=45 cycles.
+	// At the start of each block row the next address is calculated and with a toggle, ASYNC sent over to life clk domain. The address of the block
+	// will be inserted into the life accesses  and the output buffer loaded from block read data row muxed and async transmission back in time for next load.
+	// Life areana is 16 blocks x 45 = 720 pels By 10 blocks x 44 = 440 pels high
+	// Display it at (40,20) till (760,460) and generate 2 colors
+	
 	
 	// Video shift register
 	// VIdeo clock domain
-	logic [255:0] life_row; // loaded async
-	logic vid_shift;
+	
+	localparam WIDTH_B = 16;
+	localparam HEIGHT_B = 10;
+	localparam VIDX_START = 40;
+	localparam VIDY_START = 20;
+
+	// Video X, Y Counter
 	logic [9:0] xcnt, ycnt; // Position counters
 	logic blank_d1;
-	logic life_fg, life_bg;
-	
-	logic [WIDTH-1:0] mem_rd;
-	assign mem_rd = read_word[vraddr_cc[5:0]];	//ASYNC MUX
-
 	always @(posedge hdmi_clk) begin
 			// Video Couter
 			blank_d1 <= blank;
 			xcnt <= ( blank ) ? 0 : xcnt + 1;
 			ycnt <= ( vsync ) ? 0 : 
 					  ( blank && !blank_d1 ) ? ycnt + 1 : ycnt;
-			// Life cell row shift register, *NOTE* Async load
-			life_row <=( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 ) ? { 1'b0, life_row[255:1] } : /*ASYNC-->*/mem_rd ;
-			// Overlay
-			life_fg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 &&  life_row[0] ) ? 1'b1 : 1'b0;
-			life_bg <= ( xcnt >= 256 && xcnt < 512 && ycnt >= 128 && ycnt < 384 && !life_row[0] ) ? 1'b1 : 1'b0;
 	end
 
-	assign vraddr = ( ycnt >= 128 && ycnt < 384 ) ? ycnt - 128 : 0 ; // video row read addr ASYNC, but stable before use in clk4 domain
-	assign video_blank = blank;
+
+	// Life Cell block row addressing
+	logic active; // active life window
+	logic vid_tgl; // toggle ASYNC request
+	logic [5:0] vid_x;
+	logic [3:0] vid_bx;
+	logic [5:0] vid_y;
+	logic [5:0] vid_by;
+	always @(posedge hdmi_clk) begin
+		// get active window
+		active <= ( xcnt >=  19 && 
+						xcnt <  759 &&
+						ycnt >=  40 &&
+						ycnt <  440 	) ? 1'b1 : 1'b0;
+		// Clear counters during vsync and increment during active
+		if( vsync ) begin // should always be corrent but reset anyway
+			vid_x <= 0;
+			vid_bx <= 1;  // we pre-fetch 
+			vid_y <= 0;
+			vid_by <= 0;
+		end else if( active ) begin // step through block row addressing
+			vid_x =  ( vid_x == WIDTH-1  ) ? 0 : vid_x + 1; // walk row within blocks
+			vid_bx = ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? 0 : // wrap at pic edge
+			         ( vid_x == WIDTH-1 ) ? vid_bx + 1 : vid_x; // step at the edge of each.
+			vid_y =  ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? (( vid_y == HEIGHT-1 ) ? 0 : vid_y + 1 ) : vid_y; // step down row within a block 
+			vid_by = ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1    && vid_y == HEIGHT-1) ? (( vid_by == HEIGHT_B-1 ) ? 0 : vid_by+1 ) : vid_by; // step down through frame
+			vid_tgl =( vid_x == WIDTH-1  ) ? !vid_tgl : vid_tgl; // Toggle as addressed update to next block
+		end // active
+	end
+			
+//////////////////////////////////////////////////////////////////////////////
+///////////////////////   Clock Domain Change ////////////////////////////////			
+
+	// toggle from hdmi_clk domain generates pulse in clk4 domain
+	logic [4:0] vid_cc_tgl;
+	always @(posedge clk4) vid_cc_tgl <= { vid_cc_tgl[3]^vid_cc_tgl[2], vid_cc_tgl[2:0], vid_tgl/*ASYNC*/ };
+		
+	// Register counters needed for address calc
+	// we'll wait long enough before using, long? timing path ok
+	logic [3:0] vid_cc_bx;
+	logic [5:0] vid_cc_y;
+	logic [3:0] vid_cc_by;
+	always @(posedge clk4 ) begin 
+		vid_cc_bx	<= vid_bx; 
+		vid_cc_y		<= vid_y;
+		vid_cc_by	<= vid_by;
+	end
 	
+	// Video read pulse and address to RAM
+	assign vraddr[7:0] = { vid_cc_by[3:0], vid_cc_bx[3:0] }; // will be re-mapped via BASE
+	assign vload       = vid_cc_tgl[4]; // address stable
+
+	// Full array of data will be latched by mem system, need to mux, do it from mem clock, but captured by video clock
+	logic [WIDTH-1:0] mem_rd; // loaded data block row
+	assign mem_rd = read_word[vid_cc_y[5:0]];	//ASYNC MUX	-- allows flexible place & route for this big mux
+			
+			
+///////////////////////   Clock Domain Revert ////////////////////////////////			
+//////////////////////////////////////////////////////////////////////////////	
+			
+	logic [WIDTH-1:0] life_row; // loaded async
+	logic life_fg, life_bg;
+			
+	always_ff @(posedge hdmi_clk) begin
+			if( active ) begin
+				if( vid_x == WIDTH-1 ) begin
+					life_row <= mem_rd; // ASYNC (on purpose)
+				end else begin
+					life_row <= { 1'b0, life_row[WIDTH-1:1] };
+				end
+			end
+			// Overlay
+			life_fg <= ( active &&  life_row[0] ) ? 1'b1 : 1'b0;
+			life_bg <= ( active && !life_row[0] ) ? 1'b1 : 1'b0;
+	end
+
+///////////////////////// LIFE VIDEO GENERATION done /////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 	
 
 	// Font Generator
