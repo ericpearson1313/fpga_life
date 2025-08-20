@@ -41,9 +41,9 @@ module life_engine_2D #(
 	
 	// Register raddr, waddr, we, large large fanout.
 	// Synth tool intended to replicate regs as need to meet timing.
-	logic [2:0][2:0][7:0] raddr_q; // also used for init writes
-	logic [7:0] 			 waddr_q;
-	logic 					 we_q;
+	logic [2:0][2:0][7:0] raddr_q; // 1,1 also used for video read
+	logic [7:0] 			 waddr_q; // init or life
+	logic 					 we_q;	 // init or life
 	always_ff @(posedge clk) begin
 		raddr_q 	<= raddr;
 		we_q 		<= we;
@@ -253,36 +253,43 @@ module life_engine_2D #(
 			for( int yy = 0; yy < HEIGHT; yy++ ) 
 				out[yy][xx] <= cell_out[GENS-1][yy+GENS][xx+GENS];
 	end
+	
+	// Init data mux before fanout so init data is written coherently 
+	logic [HEIGHT-1:0][WIDTH-1:0] write_data;
+	always_comb begin
+		write_data = ( init ) ? init_data : out;
+	end
+		
 			
 	// Format write data for memory inputs with boundary replication and cross wiring
 	always_comb begin
 		// mem_din central array
 		for( int xx = 0; xx < WIDTH; xx++ ) begin
 			for( int yy = 0; yy < HEIGHT; yy++ ) begin
-				mem11_din[yy*WIDTH+xx] = out[yy][xx];
+				mem11_din[yy*WIDTH+xx] = write_data[yy][xx];
 			end // yy
 		end // gg
 		// Top Bot
 		for( int xx = 0; xx < WIDTH; xx ++ ) begin
 			for( int yy = 0; yy < GENS; yy++ ) begin
-				mem01_din[yy*WIDTH+xx] = out[HEIGHT-GENS+yy][xx]; // Top is taken from botton
-				mem21_din[yy*WIDTH+xx] = out[            yy][xx]; // Bot is taken from top
+				mem01_din[yy*WIDTH+xx] = write_data[HEIGHT-GENS+yy][xx]; // Top is taken from botton
+				mem21_din[yy*WIDTH+xx] = write_data[            yy][xx]; // Bot is taken from top
 			end // yy
 		end // xx
 		// Sides
 		for( int xx = 0; xx < GENS; xx++ ) begin
 			for( int yy = 0; yy < HEIGHT; yy++ ) begin
-				mem10_din[yy*GENS+xx]  = out[yy][WIDTH-GENS+xx];	// Left is taken from right
-				mem12_din[yy*GENS+xx]  = out[yy][           xx];	// Right is taken from left
+				mem10_din[yy*GENS+xx]  = write_data[yy][WIDTH-GENS+xx];	// Left is taken from right
+				mem12_din[yy*GENS+xx]  = write_data[yy][           xx];	// Right is taken from left
 			end // yy
 		end // xx
 		// Corners
 		for( int xx = 0; xx < GENS; xx++ ) begin
 			for( int yy = 0; yy < GENS; yy++ ) begin
-				mem00_din[yy*GENS+xx] = out[HEIGHT-GENS+yy][WIDTH-GENS+xx]; 	// UL gets LR
-				mem02_din[yy*GENS+xx] = out[HEIGHT-GENS+yy][           xx]; 	// UR gets LL
-				mem20_din[yy*GENS+xx] = out[            yy][WIDTH-GENS+xx]; 	// LL gets UR
-				mem22_din[yy*GENS+xx] = out[            yy][           xx]; 	// LR gets UL
+				mem00_din[yy*GENS+xx] = write_data[HEIGHT-GENS+yy][WIDTH-GENS+xx]; 	// UL gets LR
+				mem02_din[yy*GENS+xx] = write_data[HEIGHT-GENS+yy][           xx]; 	// UR gets LL
+				mem20_din[yy*GENS+xx] = write_data[            yy][WIDTH-GENS+xx]; 	// LL gets UR
+				mem22_din[yy*GENS+xx] = write_data[            yy][           xx]; 	// LR gets UL
 			end // xx
 		end // yy
 	end
