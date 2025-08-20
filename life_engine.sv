@@ -20,7 +20,7 @@ module life_engine_2D #(
 	output logic [HEIGHT*WIDTH-1:0] dout, // snapshot of array
 	// Init port
 	input logic init,
-	input logic [WIDTH*HEIGHT-1:0] init_data
+	input logic init_data
 	
 );
 
@@ -44,10 +44,12 @@ module life_engine_2D #(
 	logic [2:0][2:0][7:0] raddr_q; // 1,1 also used for video read
 	logic [7:0] 			 waddr_q; // init or life
 	logic 					 we_q;	 // init or life
+	logic						 init_q;
 	always_ff @(posedge clk) begin
 		raddr_q 	<= raddr;
 		we_q 		<= we;
 		waddr_q 	<= waddr; 
+		init_q   <= init;
 	end
 
 	
@@ -256,8 +258,9 @@ module life_engine_2D #(
 	
 	// Init data mux before fanout so init data is written coherently 
 	logic [HEIGHT-1:0][WIDTH-1:0] write_data;
-	always_comb begin
-		write_data = ( init ) ? init_data : out;
+	logic dummy;
+	always_ff @(posedge clk) begin
+		{dummy, write_data} <= ( init_q ) ? { write_data, init_data } : { 1'b0, out };
 	end
 		
 			

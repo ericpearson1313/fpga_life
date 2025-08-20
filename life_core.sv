@@ -222,7 +222,7 @@ assign speaker_n = !speaker;
 
 
 	// Integrate the life engine
-	logic [WIDTH*HEIGHT-1:0] init_word;
+	logic init_word;
 	logic [HEIGHT-1:0][WIDTH-1:0] read_word; // latched read word
 	logic [2:0][2:0][DBITS-1:0] raddr;
 	logic [DBITS-1:0] waddr;
@@ -247,8 +247,8 @@ assign speaker_n = !speaker;
 		//.sh( sh ),
 		.ld( ld ),  // loads addresssed word into dout port for the video scan
 		.dout( read_word ), // full array wordlatched by ld flag, for video shift reg
-		.init( init ),
-		.init_data( init_word ) // full array bit
+		.init( init ), // data is shifted into word, hold 1M cycles-ish, write as need
+		.init_data( init_word ) // bit shift input
 	);
 	
 	// Generate Init word (lfsr for now)
@@ -285,9 +285,7 @@ assign speaker_n = !speaker;
 		end
 	end
 	
-	assign init_word[WIDTH*HEIGHT-1-:256] = lfsr;
-	always_ff @(posedge clk) init_word[WIDTH*HEIGHT-256-1:0] <= { lfsr[0], init_word[WIDTH*HEIGHT-256-1:1 ] };
-	always_ff @(posedge clk) init <= we_init;
+	assign init_word = lfsr[0];
 	
 	// Life Control state machine.
 	// Generates cell read and write addresses 
@@ -458,9 +456,10 @@ assign speaker_n = !speaker;
 	end
 		
 	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
-	always @(posedge clk4)
+	always @(posedge clk4) begin
 		we_init <= ( init_count[21:20] == 2'h1 && init_count[11:0] == 12'hfff ) ? 1'b1 : 1'b0;
-
+		init <= ( init_count == 22'h200000 ) ? 1'b0 : 1'b1;
+	end
 	
 	/////////////////////////////////
 	////
