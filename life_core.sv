@@ -216,6 +216,8 @@ assign speaker_n = !speaker;
 	parameter HEIGHT = 44;	// Datapath height
 	parameter DBITS = 8;		// depth address bitwidth
 	parameter GENS  = 1;	// hardware Generations per pass
+	parameter WIDTH_B = 16;  // blocks wide
+	parameter HEIGHT_B = 10; // blocks high
 /////////////////////////////
 
 
@@ -285,103 +287,139 @@ assign speaker_n = !speaker;
 	
 	assign init_word[WIDTH*HEIGHT-1-:256] = lfsr;
 	always_ff @(posedge clk) init_word[WIDTH*HEIGHT-256-1:0] <= { lfsr[0], init_word[WIDTH*HEIGHT-256-1:1 ] };
+	always_ff @(posedge clk) init <= we_init;
 	
 	// Life Control state machine.
 	// Generates cell read and write addresses 
 	// and we and rd signals.
-	// During Hblank of active lines the a single cycle will be used to load a word 
-	// the async load will take place later when in the display window
-	// will also count seconds, and frames to get the generation rate
-	// will also increment eon counter, 
-	// need an init memory method.
-	// suggest maybe true dual port and use the 2nd write port from a 256bit write reg.
-	
+
 	// Signal from video display (aready in clk4)
 	logic [DBITS-1:0] vraddr; // ASYNC loaded, but stable before use in clk4 domain
 	logic             vload;  // Pulse indication video read request and address stable.
 
-	
 	// Generation read state machine, runs loops if life_go. 
 	// Min 2 cycles for life_go as maybe over-ridden
 	// Will complete 
 	
-	localparam IDLE_COUNT  = (2<<DBITS)-GENS-1;
-	localparam START_COUNT = (2<<DBITS)-GENS;
-	localparam PIPE_DEPTH  = 2 + 2 + GENS * 3 + 1;
-	localparam DONE_COUNT  = WIDTH + GENS + PIPE_DEPTH - 1;
+	localparam IDLE_COUNT  = (2<<DBITS)-1;
+	localparam START_COUNT = 0;
+	localparam PIPE_DEPTH  = 6;
+	localparam WRITE_DELAY = 5; // Cycles after read when I should sent write
+	localparam DONE_COUNT  = WIDTH_B*HEIGHT_B - 1;
 
-	
+	// Life start, single pulse or continuous
 	logic life_go;
 	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
-	logic [DBITS:0] read_row; 
-	logic [DBITS-1:0] base;
-	logic vid_pend;
+	
+	
+	// Loop through image
+	logic [DBITS:0] read_cnt;
+	logic [3:0] base;
 	always_ff @( posedge clk4 ) begin
 		if( reset ) begin
-			read_row <= IDLE_COUNT; // idle state
-			base     <= 0; // base ram ddr
+			read_cnt <= IDLE_COUNT; // idle state
+			base     <= 1; // base ram ddr
 		end else begin
-			if( read_row == IDLE_COUNT ) begin
-				read_row <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
-			end else if ( read_row == DONE_COUNT ) begin  // counts up to 105 giving 256+1lead+6pipe
-				read_row <= ( life_go & !vid_pend ) ? START_COUNT : IDLE_COUNT; // restart if go unless vid pend
+			if( read_cnt == IDLE_COUNT ) begin
+				read_cnt <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
+			end else if ( read_cnt == DONE_COUNT ) begin  // counts up to 105 giving 256+1lead+6pipe
+				read_cnt <= ( life_go ) ? START_COUNT : IDLE_COUNT; // restart if go unless vid pend
 			end else begin
-				read_row <= read_row + 1;
+				read_cnt <= read_cnt + 1;
 			end
 			// Increment base when finished gen
-			base <= ( read_row == DONE_COUNT ) ? (base + GENS) : base; 
+			base <= ( read_cnt == DONE_COUNT ) ? ((base == HEIGHT_B-1) ? 0 : base+1 ) : base; 
 		end
 	end
 	
-	// address pipe stage 1
-	logic [DBITS-1:0] adj_vraddr;
-	logic [DBITS-1:0] adj_read_row;
-	logic [DBITS:0] del_read_row;
-	always_ff @( posedge clk4 ) begin
-		adj_read_row <= read_row[DBITS-1:0] + base;
-		adj_vraddr <= vraddr + base;
-		del_read_row <= read_row;
-	end		
 	
-	// Video row select bits
-	logic [HEIGHT-1:0] sel_row;
-	always_ff @(posedge clk4 ) begin
-		for( int yy = 0; yy < HEIGHT; yy++ ) begin
-			sel_row[yy] <= ( read_row[5:0] == yy ) ? 1'b1 : 1'b0;
-		end // yy
+	// Row address mapping pipeline. Packing 10 rows into 15 while 
+	// suporting top/bot wrap and not overwriting mem.
+	// Cost is 2 extra rows, one for row 0 and one always available for write.
+	// Need 4 of them for row-1, row, row+1, and base+1 (for write)
+	// 4 cycle pipeline
+	logic [3:0][3:0] row_reg; 
+	logic [3:0][3:0] base_reg;
+	logic [3:0][1:0] roweq0; // pipeline
+	logic [3:0][1:0] basebit0;
+	logic [3:0][4:0] basesum;
+	logic [3:0][4:0] basemod;
+	logic [3:0][3:0] adj_row;
+	always_ff @(posedge clk4) begin
+		row_reg[0] <= (read_cnt[7:4]==4'h0)?HEIGHT_B-1:read_cnt[7:4]-4'h1; // row-1
+		row_reg[1] <= (read_cnt == IDLE_COUNT) ? vraddr[7:4] : read_cnt[7:4]; // row
+		row_reg[2] <= (read_cnt[7:4]==HEIGHT_B-1)?4'h0:read_cnt[7:4]+4'h1; // row+1
+		row_reg[3] <= (read_cnt == IDLE_COUNT) ? vraddr[7:4] : read_cnt[7:4]; // Write row
+		base_reg[0] <= base;
+		base_reg[1] <= base;
+		base_reg[2] <= base;
+		base_reg[3] <= (base==HEIGHT_B-1)?4'h0:base+4'h1;
+		for( int ii = 0; ii < 4; ii++ ) begin
+			roweq0[ii][0] <= ( row_reg[ii] == 0 ) ? 1'b1 : 1'b0;
+			roweq0[ii][1] <= roweq0[ii][0];
+			basebit0[ii][0] <= base_reg[0];
+			basebit0[ii][1] <= basebit0[ii][0];
+			basesum[ii] <= { 1'b0, row_reg[ii] } + { 1'b0, base_reg[ii] };
+			basemod[ii] <= ( basesum[ii] > HEIGHT_B ) ? basesum[ii] - HEIGHT_B : basesum[ii];
+			adj_row[ii] <= ( roweq0[ii][1] ) ? ( basebit0[ii][1] ? 4'hf : 4'h0 ) : basemod[ii];
+		end // ii
 	end
-	assign ld_sel = sel_row; // connect selects to engine.
 	
-	// Address pipe stage 2
-	logic [7:0] caddr; // center address
-	always_ff @( posedge clk4 ) begin
-		caddr <= ( del_read_row == IDLE_COUNT ) ? adj_vraddr : adj_read_row[DBITS-1:0]; // over-ride address this cycle
-		waddr <= ( we_init ) ? init_count[2*DBITS-1-:DBITS] : (GENS + adj_read_row[DBITS-1:0] - PIPE_DEPTH + 2); // write is 6 cycle delayed
-		we    <= ( del_read_row >= PIPE_DEPTH && del_read_row <= DONE_COUNT ) || we_init; // write window
-		ld	 	<= ( del_read_row == IDLE_COUNT && vid_pend ) ? 1'b1 : 1'b0;
-		init	<= we_init;
-		sh    <= 1;
-		// handle video pend flag, rise on blank fall, fall when we see an idle state
-		vid_pend <= ( !vid_pend && vload ) ? 1'b1 : (del_read_row == IDLE_COUNT ) ? 1'b0 : vid_pend;
+	
+	// Column addressing pipeline
+	// Matching depth to row pipe
+	// does col+/- for life read
+	logic [3:0] col_mux;
+	logic [1:0][3:0] col_del;
+	logic [2:0][3:0] adj_col;
+	always_ff @(posedge clk4) begin
+		col_mux <= (read_cnt == IDLE_COUNT) ? vraddr[3:0] : read_cnt[3:0]; // col
+		col_del[0] <= col_mux;
+		col_del[1] <= col_del[0];
+		adj_col[0] <= col_del[1] - 1;
+		adj_col[1] <= col_del[1];
+		adj_col[2] <= col_del[1] + 1;
 	end
 	
-	assign raddr[0][0] = caddr[7:0];
-	assign raddr[0][1] = caddr[7:0]+1;
-	assign raddr[0][2] = caddr[7:0]+2;
-	assign raddr[1][0] = caddr[7:0]+3;
-	assign raddr[1][1] = caddr[7:0]+4;
-	assign raddr[1][2] = caddr[7:0]+5;
-	assign raddr[2][0] = caddr[7:0]+6;
-	assign raddr[2][1] = caddr[7:0]+7;
-	assign raddr[2][2] = caddr[7:0]+8;
+	// Assign the 9 read addresses
+	assign raddr[0][0] = { adj_row[0], adj_col[0] };
+	assign raddr[0][1] = { adj_row[0], adj_col[1] };
+	assign raddr[0][2] = { adj_row[0], adj_col[2] };
+	assign raddr[1][0] = { adj_row[1], adj_col[0] };
+	assign raddr[1][1] = { adj_row[1], adj_col[1] };
+	assign raddr[1][2] = { adj_row[1], adj_col[2] };
+	assign raddr[2][0] = { adj_row[2], adj_col[0] };
+	assign raddr[2][1] = { adj_row[2], adj_col[1] };
+	assign raddr[2][2] = { adj_row[2], adj_col[2] };
+
+	// Pipe delay write address
+	logic [WRITE_DELAY-2:0][3:0] waddr_del;
+	always_ff @(posedge clk4) begin
+		waddr_del <= { waddr_del[WRITE_DELAY-2:0], adj_row[3] };
+	   waddr     <= ( we_init ) ? init_count[19-:8] : waddr_del[WRITE_DELAY-2];
+	end
+	
+	// Created delayed write enable (accout for row/col adj and write delay
+	logic [WRITE_DELAY-2+4:0][3:0] we_del;
+	always_ff @(posedge clk4) begin
+		we_del <= { we_del[WRITE_DELAY-3+4:0], (read_cnt == IDLE_COUNT) ? 1'b0 : 1'b1};
+		we     <= we_init | we_del[WRITE_DELAY-2+4];
+	end
+	
+	// Create and delay ld signal for video read
+	logic [3:0] ld_del;
+	always_ff @(posedge clk4) begin
+		{ ld, ld_del } <= { ld_del, vload };
+	end
 	
 	
+	////////////////////////////////////////////////////
 	// Generation counters
-	
+	// count seconds, and generation ticks 
 	logic        gen_tick;
 	logic [47:0] gen_count;
 	always_ff@( posedge clk4 ) begin
-		gen_tick <= ( read_row == DONE_COUNT ) ? 1'b1 : 1'b0;
+		gen_tick <=  ( read_cnt == DONE_COUNT ) ? 1'b1 : 1'b0;
 		gen_count <= ( gen_tick ) ? gen_count + GENS : gen_count;
 	end
 	
@@ -407,20 +445,22 @@ assign speaker_n = !speaker;
 	end
 	
 	
-	// Initialization cycles
+	// Initialization cycles. Wait for startup
+	// Write 256 blocks after waiting 4096 cycles each (1Mcycles total)
 	
-	logic [17:0] init_count;
+	logic [21:0] init_count;
 	always @(posedge clk4) begin	
 		if( reset ) begin
 			init_count <= 0;
 		end else begin
-			init_count <= ( init_count == 18'h30000 ) ? 18'h30000 : init_count + 1;
+			init_count <= ( init_count == 22'h200000 ) ? 22'h200000 : init_count + 1;
 		end
 	end
 		
 	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
 	always @(posedge clk4)
-		we_init <= ( init_count[17:16] == 2'h2 && init_count[7:0] == 8'hfe ) ? 1'b1 : 1'b0;
+		we_init <= ( init_count[21:20] == 2'h1 && init_count[11:0] == 12'hfff ) ? 1'b1 : 1'b0;
+
 	
 	/////////////////////////////////
 	////
@@ -473,8 +513,7 @@ assign speaker_n = !speaker;
 	// Video shift register
 	// VIdeo clock domain
 	
-	localparam WIDTH_B = 16;
-	localparam HEIGHT_B = 10;
+
 	localparam VIDX_START = 40;
 	localparam VIDY_START = 20;
 
