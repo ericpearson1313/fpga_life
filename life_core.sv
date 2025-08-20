@@ -393,6 +393,7 @@ assign speaker_n = !speaker;
 	assign raddr[2][2] = { adj_row[2], adj_col[2] };
 
 	// Pipe delay write address
+	logic [21:0] init_count; // init counter, 2 million cycles
 	logic [WRITE_DELAY-2:0][3:0] waddr_del;
 	always_ff @(posedge clk4) begin
 		waddr_del <= { waddr_del[WRITE_DELAY-2:0], adj_row[3] };
@@ -444,11 +445,10 @@ assign speaker_n = !speaker;
 		end
 	end
 	
-	
+	////////////////////////////////////////////////////
 	// Initialization cycles. Wait for startup
 	// Write 256 blocks after waiting 4096 cycles each (1Mcycles total)
 	
-	logic [21:0] init_count;
 	always @(posedge clk4) begin	
 		if( reset ) begin
 			init_count <= 0;
@@ -512,10 +512,7 @@ assign speaker_n = !speaker;
 	
 	// Video shift register
 	// VIdeo clock domain
-	
 
-	localparam VIDX_START = 40;
-	localparam VIDY_START = 20;
 
 	// Video X, Y Counter
 	logic [9:0] xcnt, ycnt; // Position counters
@@ -538,10 +535,10 @@ assign speaker_n = !speaker;
 	logic [5:0] vid_by;
 	always @(posedge hdmi_clk) begin
 		// get active window
-		active <= ( xcnt >=  19 && 
+		active <= ( xcnt >=  39 && 
 						xcnt <  759 &&
-						ycnt >=  40 &&
-						ycnt <  440 	) ? 1'b1 : 1'b0;
+						ycnt >=  19 &&
+						ycnt <  459 	) ? 1'b1 : 1'b0;
 		// Clear counters during vsync and increment during active
 		if( vsync ) begin // should always be corrent but reset anyway
 			vid_x <= 0;
@@ -596,7 +593,7 @@ assign speaker_n = !speaker;
 				if( vid_x == WIDTH-1 ) begin
 					life_row <= mem_rd; // ASYNC (on purpose)
 				end else begin
-					life_row <= { 1'b0, life_row[WIDTH-1:1] };
+					life_row <= { 1'b1, life_row[WIDTH-1:1] };
 				end
 			end
 			// Overlay
@@ -686,13 +683,13 @@ assign speaker_n = !speaker;
 	
 	// Overlay Text - Dynamic
 	logic [6:0] id_str;
-	string_overlay #(.LEN(21)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('h09), .out( id_str[0]), .str( "Conway's Game of LIFE" ) );
-	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d58), .out( id_str[1]), .in( gen_count[47:0] ) );
+	string_overlay #(.LEN(21)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('h01), .out( id_str[0]), .str( "Conway's Game of LIFE" ) );
+	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d59), .out( id_str[1]), .in( gen_count[47:0] ) );
    //bin_overlay    #(.LEN(1 )) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char), .x('h46),.y('h09), .out( id_str[2]), .in( disp_id == 32'h0E96_0001 ) );
 	//string_overlay #(.LEN(14)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d119),.y('d58), .out( id_str[3]), .str( "commit 0123abc" ) );
-	hex_overlay    #(.LEN(8 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d54), .out( id_str[4]), .in( genpersec_latch[31:0] ) );
-	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d56), .out( id_str[5]), .str( "Total Generations" ) );
-	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d52), .out( id_str[6]), .str( "Generations/sec" ) );
+	hex_overlay    #(.LEN(8 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h30),.y('d59), .out( id_str[4]), .in( genpersec_latch[31:0] ) );
+	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d58), .out( id_str[5]), .str( "Total Generations" ) );
+	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h28), .y('d58), .out( id_str[6]), .str( "Generations/sec" ) );
 
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
@@ -739,9 +736,9 @@ assign speaker_n = !speaker;
 		// YUV mode input
 		.yuv_mode		( 0 ), // use YUV2 mode, cheap USb capture devices provice lossless YUV2 capture mode 
 		// RBG Data
-		.red   ( test_red   | overlay_red   ),
-		.green ( test_green | overlay_green ),
-		.blue  ( test_blue  | overlay_blue  ),
+		.red   ( ( !life_fg & !life_bg ) ? ( test_red   | overlay_red   ) : overlay_red   ),
+		.green ( ( !life_fg & !life_bg ) ? ( test_green | overlay_green ) : overlay_green ),
+		.blue  ( ( !life_fg & !life_bg ) ? ( test_blue  | overlay_blue  ) : overlay_blue  ),
 		// HDMI and DVI encoded video
 		.hdmi_data( hdmi2_data ),
 		.dvi_data( dvi_data )
