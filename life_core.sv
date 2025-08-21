@@ -343,22 +343,22 @@ assign speaker_n = !speaker;
 	logic [3:0][4:0] basemod;
 	logic [3:0][3:0] adj_row;
 	always_ff @(posedge clk4) begin
-		row_reg[0] <= (read_cnt[7:4]==4'h0)?HEIGHT_B-1:read_cnt[7:4]-4'h1; // row-1
+		row_reg[0] <= (read_cnt[7:4]==0) ? HEIGHT_B-1 : read_cnt[7:4]-1; // row-1
 		row_reg[1] <= (read_cnt == IDLE_COUNT) ? vraddr[7:4] : read_cnt[7:4]; // row
-		row_reg[2] <= (read_cnt[7:4]==HEIGHT_B-1)?4'h0:read_cnt[7:4]+4'h1; // row+1
-		row_reg[3] <= (read_cnt == IDLE_COUNT) ? vraddr[7:4] : read_cnt[7:4]; // Write row
+		row_reg[2] <= (read_cnt[7:4]==HEIGHT_B-1) ? 0 : read_cnt[7:4]+1; // row+1
+		row_reg[3] <=  read_cnt[7:4]; // Write row
 		base_reg[0] <= base;
 		base_reg[1] <= base;
 		base_reg[2] <= base;
-		base_reg[3] <= (base==HEIGHT_B-1)?4'h0:base+4'h1;
+		base_reg[3] <= (base==HEIGHT_B-1) ? 0 : base+1;
 		for( int ii = 0; ii < 4; ii++ ) begin
 			roweq0[ii][0] <= ( row_reg[ii] == 0 ) ? 1'b1 : 1'b0;
 			roweq0[ii][1] <= roweq0[ii][0];
-			basebit0[ii][0] <= base_reg[0];
+			basebit0[ii][0] <= base_reg[ii][0]; // lsb bit 0
 			basebit0[ii][1] <= basebit0[ii][0];
-			basesum[ii] <= { 1'b0, row_reg[ii] } + { 1'b0, base_reg[ii] };
-			basemod[ii] <= ( basesum[ii] > HEIGHT_B ) ? basesum[ii] - HEIGHT_B : basesum[ii];
-			adj_row[ii] <= ( roweq0[ii][1] ) ? ( basebit0[ii][1] ? 4'hf : 4'h0 ) : basemod[ii];
+			basesum[ii] <= { 1'b0, row_reg[ii] } - { 1'b0, base_reg[ii] };
+			basemod[ii] <= ( basesum[ii][4] || basesum[ii]==0 ) ? basesum[ii] + HEIGHT_B : basesum[ii];
+			adj_row[ii] <= ( roweq0[ii][1] ) ? ( basebit0[ii][1] ? 4'hf : 4'h0 ) : basemod[ii][3:0];
 		end // ii
 	end
 	
