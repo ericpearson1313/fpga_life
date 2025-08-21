@@ -395,16 +395,16 @@ assign speaker_n = !speaker;
 	
 	// Pipe delay write address
 	// Write should be 6 cycles after read	
-	logic [WRITE_DELAY-2:0][3:0] waddr_del; // 5 cycle delay
+	logic [WRITE_DELAY-2:0][7:0] waddr_del; // 5 cycle delay +1 for output reg itself
 	always_ff @(posedge clk4) begin
-		waddr_del <= { waddr_del[WRITE_DELAY-3:0], adj_row[3] };
+		waddr_del <= { waddr_del[WRITE_DELAY-3:0], {adj_row[3], adj_col[1]} };
 	   waddr     <= ( we_init ) ? init_count[19-:8] : waddr_del[WRITE_DELAY-2];
 	end
 	
 	// Created delayed write enable (accout for row/col adj and write delay
 	logic [WRITE_DELAY-2+4:0] we_del;
 	always_ff @(posedge clk4) begin
-		we_del <= { we_del[WRITE_DELAY-3+4:0], (read_cnt == IDLE_COUNT) ? 1'b0 : 1'b1};
+		we_del <= { we_del[WRITE_DELAY-3+4:0], ((read_cnt == IDLE_COUNT) ? 1'b0 : 1'b1)};
 		we     <= we_init | we_del[WRITE_DELAY-2+4];
 	end
 	
