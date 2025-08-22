@@ -186,7 +186,7 @@ module life_engine_2D #(
 					add8_in[gg][(yy-gg-1)*(WIDTH+2*(GENS-gg-1))+xx-gg-1] = // Packed into LSB of add8 input array per generation
 						(xx%3 == 0 && yy%3 == 0) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], orig[gg][yy][xx+1] } : // |=* anything
 						(xx%3 == 0 && yy%3 == 1) ? { add4v[gg][yy][xx  ], add3h[gg][yy-1][xx], orig[gg][yy+1][xx] } : // |=* vert
-						(xx%3 == 0 && yy%3 == 2) ? { add4v[gg][yy][xx-1], add3h[gg][yy+1][xx], orig[gg][yy-1][xx] } : // *=| vert
+						(xx%3 == 0 && yy%3 == 2) ? { add4v[gg][yy-1][xx], add3h[gg][yy+1][xx], orig[gg][yy-1][xx] } : // *=| vert
 						(xx%3 == 1             ) ? { add4h[gg][yy][xx  ], add3v[gg][yy][xx-1], orig[gg][yy][xx+1] } : // |=* horiz
 					 /*(xx%3 == 2             )*/ { add4h[gg][yy][xx-1], add3v[gg][yy][xx+1], orig[gg][yy][xx-1] } ; // *=| horiz
 				end // xx
