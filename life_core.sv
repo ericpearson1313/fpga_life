@@ -534,7 +534,7 @@ assign speaker_n = !speaker;
 	logic [5:0] vid_x;
 	logic [3:0] vid_bx;
 	logic [5:0] vid_y;
-	logic [5:0] vid_by;
+	logic [3:0] vid_by;
 	always @(posedge hdmi_clk) begin
 		// get active window
 		active <= ( xcnt >=  39 && 
