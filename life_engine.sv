@@ -2,11 +2,11 @@
 // WIDTH x HEIGHT x GENS for each memory read. 
 // Memory depth = DEPTH
 module life_engine_2D #(
-	WIDTH = 37,		// Array width = Datapath width
+	WIDTH = 45,		// Array width = Datapath width
 	DEPTH = 256,	// memory Depth, (ignored, always 256 supported, we use M9Ks as 32bit x 256word rams)
-	HEIGHT = 36,	// Datapath height
+	HEIGHT = 44,	// Datapath height
 	DBITS = 8,		// depth address bitwidth, (ignored, only 8 supported with M9K rams)
-	GENS  = 2		// hardware Generations per pass
+	GENS  = 1		// hardware Generations per pass
 ) (
 	// System
 	input clk,
