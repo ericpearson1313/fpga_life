@@ -548,12 +548,12 @@ assign speaker_n = !speaker;
 			vid_y <= 0;
 			vid_by <= 0;
 		end else if( active ) begin // step through block row addressing
-			vid_x =  ( vid_x == WIDTH-1  ) ? 0 : vid_x + 1; // walk row within blocks
-			vid_bx = ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? 0 : // wrap at pic edge
-			         ( vid_x == WIDTH-1 ) ? vid_bx + 1 : vid_bx; // step at the edge of each.
-			vid_y =  ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? (( vid_y == HEIGHT-1 ) ? 0 : vid_y + 1 ) : vid_y; // step down row within a block 
-			vid_by = ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1    && vid_y == HEIGHT-1) ? (( vid_by == HEIGHT_B-1 ) ? 0 : vid_by+1 ) : vid_by; // step down through frame
-			vid_tgl =( vid_x == WIDTH-1  ) ? !vid_tgl : vid_tgl; // Toggle as addressed update to next block
+			vid_x  <= ( vid_x == WIDTH-1  ) ? 0 : vid_x + 1; // walk row within blocks
+			vid_bx <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? 0 : // wrap at pic edge
+			          ( vid_x == WIDTH-1 ) ? vid_bx + 1 : vid_bx; // step at the edge of each.
+			vid_y  <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? (( vid_y == HEIGHT-1 ) ? 0 : vid_y + 1 ) : vid_y; // step down row within a block 
+			vid_by <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1    && vid_y == HEIGHT-1) ? (( vid_by == HEIGHT_B-1 ) ? 0 : vid_by+1 ) : vid_by; // step down through frame
+			vid_tgl<= ( vid_x == WIDTH-1  ) ? !vid_tgl : vid_tgl; // Toggle as addressed update to next block
 		end // active
 	end
 			
