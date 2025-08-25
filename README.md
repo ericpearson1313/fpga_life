@@ -1,11 +1,10 @@
 # fpga_life
 A FPGA implementation of Conways's game of life. 
 
+Game of life at 1.2 million generations per second (720x440)
+![life hdmi](720x440life.jpeg "V4 Life Generation with HDMI display")
 
-Approx 1 million generations of life per second (256x256).
-![life hdmi](life_gen.jpeg "Life Generation with HDMI display")
 
-Update below
 
 ## Background
 
@@ -90,7 +89,14 @@ Looking at other arrangements a |==| arangement gives 9 LE/cell, and with sharin
 
 I do plan on looking at extension to a slightly larger array (say 1Kx256) keeping the same array, as once this is mastered any size of array could be used. It would force addressing overlaps and video a bit differently. Hmm.. 
 
+## V4 Update 1.2 Mhz on 720x440 array: 
+This is the penultimate form of life fitting in this FPGA that I can achieve. Implementing a 45x44 compute array using 1980-bit memory busses
+I am able to fill my display size and use every single memory resource in the FPGA. The speed may be a little bit slower, but
+without any image width restrictions it is supperior. 
 
+WIth hex 124F80 = 1,200,000 generations per second on 720x440 equal to about 5.8 for a 256x256 array it is a slowdown, but given its 100% efficient in compute cycles, image size flexibility it is a step forward. As part of this I fully parameterized the life computer engine over width, depth and generations and searched for the result that would take best advantage of the fpga resources while place/routing and closing timing in the 10M25 fpga I had.
 
+Photo of the performance of the V4 release
+![perf_mfps](720x440perf.jpeg "V4 Life measured at 1.2 million fps")
 
 
