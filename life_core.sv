@@ -603,6 +603,23 @@ assign speaker_n = !speaker;
 			life_bg <= ( active && !life_row[0] ) ? 1'b1 : 1'b0;
 	end
 
+	// Sum count of displayed life_fg cells.
+	logic [31:0] life_sum;
+	logic [31:0] life_acc;	
+	logic [31:0] life_inc;
+	logic vsync_del;
+	always_ff @(posedge hdmi_clk) begin
+		vsync_del <= vsync;
+		if ( !vsync_del && vsync ) begin // at rising edge of vsync
+			life_acc <= 0 ;
+			life_sum <= life_acc;
+		end else if( life_fg ) begin
+			life_acc <= life_inc;
+		end
+	end
+	bcd_inc32 i_bcdinc( .in( life_acc ), .out( life_inc ) );
+	
+	
 ///////////////////////// LIFE VIDEO GENERATION done /////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 	
@@ -682,9 +699,8 @@ assign speaker_n = !speaker;
 		.flash_valid( flash_valid 		 )
 	);
 
-	
 	// Overlay Text - Dynamic
-	logic [6:0] id_str;
+	logic [10:0] id_str;
 	string_overlay #(.LEN(21)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('h01), .out( id_str[0]), .str( "Conway's Game of LIFE" ) );
 	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d59), .out( id_str[1]), .in( gen_count[47:0] ) );
    //bin_overlay    #(.LEN(1 )) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char), .x('h46),.y('h09), .out( id_str[2]), .in( disp_id == 32'h0E96_0001 ) );
@@ -692,7 +708,10 @@ assign speaker_n = !speaker;
 	hex_overlay    #(.LEN(8 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h30),.y('d59), .out( id_str[4]), .in( genpersec_latch[31:0] ) );
 	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d58), .out( id_str[5]), .str( "Total Generations" ) );
 	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h28), .y('d58), .out( id_str[6]), .str( "Generations/sec" ) );
-
+	hex_overlay    #(.LEN(8 )) _id7(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('d45),.y('d1), .out( id_str[7]), .in( life_sum ) );
+	string_overlay #(.LEN(9 )) _id8(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d35), .y('d1), .out( id_str[8]), .str( "AoC Day 4" ) );
+	
+	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
 						  (|id_str  ) ; // reduction OR of the id string bits.
@@ -828,4 +847,22 @@ module debounce(
 		end
 	end
 
+endmodule
+
+module bcd_inc32 (
+	input logic [7:0][3:0] in,
+	output logic [7:0][3:0] out
+	);
+	logic [8:0] c;
+	always_comb begin // should be a loop, but ... verilator?
+		c[0] = 1;
+		out[0] = (in[0]==4'h9&&c[0])?4'h0:in[0]+c[0]; c[1]=(in[0]==4'h9&&c[0])?1'b1:1'b0;
+		out[1] = (in[1]==4'h9&&c[1])?4'h0:in[1]+c[1]; c[2]=(in[1]==4'h9&&c[1])?1'b1:1'b0;
+		out[2] = (in[2]==4'h9&&c[2])?4'h0:in[2]+c[2]; c[3]=(in[2]==4'h9&&c[2])?1'b1:1'b0;
+		out[3] = (in[3]==4'h9&&c[3])?4'h0:in[3]+c[3]; c[4]=(in[3]==4'h9&&c[3])?1'b1:1'b0;
+		out[4] = (in[4]==4'h9&&c[4])?4'h0:in[4]+c[4]; c[5]=(in[4]==4'h9&&c[4])?1'b1:1'b0;
+		out[5] = (in[5]==4'h9&&c[5])?4'h0:in[5]+c[5]; c[6]=(in[5]==4'h9&&c[5])?1'b1:1'b0;
+		out[6] = (in[6]==4'h9&&c[6])?4'h0:in[6]+c[6]; c[7]=(in[6]==4'h9&&c[6])?1'b1:1'b0;
+		out[7] = (in[7]==4'h9&&c[7])?4'h0:in[7]+c[7]; 
+	end
 endmodule
