@@ -239,10 +239,7 @@ module life_engine_2D #(
 		for( int gg = 0; gg < GENS; gg++ ) begin
 			for( int xx = gg+1; xx < WIDTH+2*GENS-gg-1 ; xx++ ) begin
 				for( int yy = gg+1; yy < HEIGHT+2*GENS-gg-1; yy++ ) begin // ***LIFE***
-					cell_out[gg][yy][xx] = ((( add8[gg][yy][xx]==3 ) &&  orig[gg][yy][xx] ) ||  // rule: alive and 3 neighbours --> stay alive
-													(( add8[gg][yy][xx]==2 ) &&  orig[gg][yy][xx] ) ||  // rule: alive and 2 neighbours --> stay Alive
-													(( add8[gg][yy][xx]==3 ) && !orig[gg][yy][xx] ))    // rule:  dead and 3 neighbours --> newly Alive
-																										? 1'b1 : 1'b0; // otherwise the cell dies or remains dead.
+					cell_out[gg][yy][xx] = (( add8[gg][yy][xx] >= 4) && orig[gg][yy][xx] ) ? 1'b1 : 1'b0; // only living cells with >=4 neighbors stays alive.
 				end // yy
 			end // xx
 		end // gg
