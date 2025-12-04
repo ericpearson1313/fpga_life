@@ -208,8 +208,32 @@ int main( int argc, char **argv )
 		fprintf(mif_fp, ";\n");
 	 }
 	 // Write init data, as 16 blocks of 4kbit=128 words of 32 bits, each holding a 45x44 section of the init_data.
-	 //
-	 //
+	 unsigned block[128]; // set of 128 32-bit words for a 4K page
+	 int pel, pel_idx;
+	 for( int blky = 0; blky < 4; blky++ ) {
+	 	for( int blkx = 0; blkx < 4; blkx++ ) {
+			for( int ii = 0; ii < 128; ii++ ) {
+				block[ii] = 0;
+			}
+			for( int yy = 0; yy < 44; yy++ ) {
+				for( int xx = 0; xx < 45; xx++ ) {
+					pel = init_data[blky*44+yy][blkx*45+xx];
+					pel_idx = yy*45+xx;
+					if( pel ) {
+						block[pel_idx>>5] |= (1<<(pel_idx&0x1f));
+					}
+				}	
+			}
+			for( int ii = 0; ii < 128; ii++ ) {
+				fprintf(mif_fp, "%03x : ", 2048+(blky*4+blkx)*128+ii );
+				for( int bit = 0; bit < 32; bit++ ) 
+					fputc( ((block[ii]>>bit) & 1 == 1 ) ? '1' : '0' , mif_fp);
+				fprintf(mif_fp, ";\n");
+			}
+		}
+	}
+
+	 // complete file
 	 fprintf(mif_fp, "END\n" );
 	 fclose( mif_fp );
 	return( 0 );
