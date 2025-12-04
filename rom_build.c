@@ -97,12 +97,52 @@ int main( int argc, char **argv )
 	fclose( text_fp );
 	printf("\ntext done\n");
 
+	// Read in Day 4 puzzle text file 
+	FILE *init_fp;
+	init_fp = fopen( "puzzle.txt", "r" );
+	printf("Read puzzle puzzle file\n");
+	int init_data[256][256];
+	int xx, yy;
+	yy = 0;
+	c = fgetc( init_fp );
+	while( !feof( init_fp ) ) {
+		xx = 0;
+		while( c != 0x0A ) {
+			init_data[yy][xx] = ( c == '@' ) ? 1 : 0;
+			xx++;
+			c = fgetc( init_fp );
+		}
+		while( xx < 256 ) {
+			init_data[yy][xx] = 0;
+			xx++;
+		}
+		yy++;
+		c = fgetc( init_fp );
+	}
+	while( yy < 256 ) {
+		for( xx = 0; xx < 256; xx++ ) {
+			init_data[yy][xx] = 0;
+		}
+		yy++;
+	}
+
+	// dump the 136x136 block
+	printf( "Day 4 puzzle data\n");
+	for( yy = 0; yy < 136; yy++ ) {
+		for( xx = 0 ; xx < 136; xx++ ) {
+			printf( "%c", ( init_data[yy][xx] ) ? '@' : '.' );
+		}
+		printf("\n");
+	}
+	fclose( init_fp );
+
+
 	FILE  *mif_fp;
 	mif_fp = fopen( "flash_rom.mif", "w" );
 	printf("Wret MIF file\n");
 	fprintf(mif_fp, "-- 16Kbyte UFM-0 organized as 4K of 32-bit words\n");
 	fprintf(mif_fp, "-- 16Kbyte UFM-0 organized as 4K of 32-bit words\n");
-	 fprintf(mif_fp, "DEPTH = 2048; -- The size of memory in words\n" );
+	 fprintf(mif_fp, "DEPTH = 4096; -- The size of memory in words\n" );
 	 fprintf(mif_fp, "WIDTH = 32; -- The size of data in bits \n" );
 	 fprintf(mif_fp, "ADDRESS_RADIX = HEX; -- The radix for address values \n" );
 	 fprintf(mif_fp, "DATA_RADIX = BIN; -- The radix for data values \n" );
@@ -167,6 +207,9 @@ int main( int argc, char **argv )
 
 		fprintf(mif_fp, ";\n");
 	 }
+	 // Write init data, as 16 blocks of 4kbit=128 words of 32 bits, each holding a 45x44 section of the init_data.
+	 //
+	 //
 	 fprintf(mif_fp, "END\n" );
 	 fclose( mif_fp );
 	return( 0 );
