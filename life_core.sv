@@ -254,38 +254,97 @@ assign speaker_n = !speaker;
 	// Generate Init word (lfsr for now)
 	// LFSR from: https://datacipy.elektroniche.cz/lfsr_table.pdf
 	
-	logic [255:0] lfsr;
+	//logic [255:0] lfsr;
+	//always_ff @(posedge clk4 ) begin
+	//	if( reset ) begin
+	//			  lfsr <= { 16'b1011000001011000,  
+	//							16'b1100000100111010, 
+	//							16'b0101000001101111, 
+	//							16'b1000001001110000, 
+	//							16'b1101101100001001, 
+	//							16'b0101110111110010, 
+	//							16'b1011100000011111, 
+	//							16'b1111110000011111, 
+	//							16'b0010111111011001, 
+	//							16'b1100100100110111, 
+	//							16'b1100100110100000, 
+	//							16'b1011000110011111, 
+	//							16'b0111001010110001, 
+	//							16'b0011011000011000, 
+	//							16'b1001101101000100, 
+	//							16'b0101001100100001 }; // start non zero rand
+	//	end else begin // Taps 255 253 250 245  -- zewro based
+	//		lfsr <= {             lfsr[0],		// 255
+	//					 lfsr[255],		
+	//					 lfsr[254] ^ lfsr[0],		// 253th
+	//					 lfsr[253:252],
+	//					 lfsr[251] ^ lfsr[0],
+	//					 lfsr[250:247],
+	//					 lfsr[246] ^ lfsr[0],
+	//					 lfsr[245:1] };
+	//	end
+	//end
+	//
+	//assign init_word = lfsr[0];
+	
+	///////////////////////
+	// Init from flash
+	///////////////////////
+	
+
+	///////////////////////////
+	//    clk_out (6mhz)     //
+
+	logic [11:0] burst_count;
+	logic [11:0] burst_addr;
+	logic [HEIGHT-1:0][WIDTH-1:0] flash_sreg; // wasteful, but needed, else affects the big_whopper
+	logic dummy;
+	always_ff @(posedge clk_out ) begin
+		burst_addr  <= ( flash_read && !flash_wait ) ? flash_addr : burst_addr;
+		burst_count <= ( flash_read && !flash_wait ) ? 0 : // addr phase
+						   ( flash_valid               ) ? burst_count + 1 : // data (bit) transfer
+																	  burst_count;
+		{ dummy, flash_sreg } <= ( flash_valid && burst_addr >= 'h800 && burst_count < (45*44) ) ? { flash_sreg, flash_data } : { 1'b0, flash_sreg };
+	end
+
+	// C2C 
+	
+	logic async_last; // signal data is shifted, assume pulse at 6Mhz is detectable on 192 Mhz.
+	always_ff @(posedge clk_out )
+		async_last  <= ( flash_valid && burst_addr >= 'h800 && burst_count == (45*44) ) ? 1'b1 : 1'b0;
+		
+	logic [3:0] c2c_last;
+	always_ff @(posedge clk4 )
+		c2c_last[3:0] <= { c2c_last[2] & c2c_last[1], c2c_last[1:0], async_last }; // transfer rising edge
+			
+	///////////////////////////
+	//    clk4 (192mhz)     //
+	
+	// Latch the assync array data, then shift it into the whopper asserting init
+	logic [0:15][7:0] addr_list = 128'h34353637444546475455565764656667;
+	logic [HEIGHT-1:0][WIDTH-1:0] init_sreg; // wasteful, but needed, else affects the big_whopper
+	logic dummy2;
+	logic [3:0] xfer_count;
+	logic [11:0] shift_count;
+	// Control signals generate to shift data into the engine
+	logic [7:0] init_waddr;
+	//logic 		init;
+	//logic 		init_word;
+	//logic 		we_init;
 	always_ff @(posedge clk4 ) begin
-		if( reset ) begin
-				  lfsr <= { 16'b1011000001011000,  
-								16'b1100000100111010, 
-								16'b0101000001101111, 
-								16'b1000001001110000, 
-								16'b1101101100001001, 
-								16'b0101110111110010, 
-								16'b1011100000011111, 
-								16'b1111110000011111, 
-								16'b0010111111011001, 
-								16'b1100100100110111, 
-								16'b1100100110100000, 
-								16'b1011000110011111, 
-								16'b0111001010110001, 
-								16'b0011011000011000, 
-								16'b1001101101000100, 
-								16'b0101001100100001 }; // start non zero rand
-		end else begin // Taps 255 253 250 245  -- zewro based
-			lfsr <= {             lfsr[0],		// 255
-						 lfsr[255],		
-						 lfsr[254] ^ lfsr[0],		// 253th
-						 lfsr[253:252],
-						 lfsr[251] ^ lfsr[0],
-						 lfsr[250:247],
-						 lfsr[246] ^ lfsr[0],
-						 lfsr[245:1] };
-		end
+		// count transfer completions and lookup block write address
+		xfer_count 	<= ( reset ) ? 0 : ( c2c_last[3] ) ? xfer_count+1 : xfer_count;
+		shift_count <= ( reset ) ? 0 : ( c2c_last[3] ) ? HEIGHT*WIDTH : ( |shift_count ) ? shift_count - 1 : shift_count; 
+		// engine init controls
+		{ init_word , init_sreg } <= ( c2c_last[3] ) ? { flash_sreg, 1'b0 } : { init_sreg, 1'b0 }; // sync load of async data, nice routing
+		init_waddr 	<= addr_list[xfer_count]; // lookup write address
+	   init 			<= |shift_count; // Configure in shift mode
+		we_init 		<= shift_count == 1; // assert we as last bit shifted in
 	end
 	
-	assign init_word = lfsr[0];
+	// end of init from flash   //
+	//////////////////////////////
+	
 	
 	// Life Control state machine.
 	// Generates cell read and write addresses 
@@ -398,7 +457,7 @@ assign speaker_n = !speaker;
 	logic [WRITE_DELAY-2:0][7:0] waddr_del; // 5 cycle delay +1 for output reg itself
 	always_ff @(posedge clk4) begin
 		waddr_del <= { waddr_del[WRITE_DELAY-3:0], {adj_row[3], adj_col[1]} };
-	   waddr     <= ( we_init ) ? init_count[19-:8] : waddr_del[WRITE_DELAY-2];
+	   waddr     <= ( we_init ) ? init_waddr : waddr_del[WRITE_DELAY-2];
 	end
 	
 	// Created delayed write enable (accout for row/col adj and write delay
@@ -459,10 +518,10 @@ assign speaker_n = !speaker;
 	end
 		
 	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
-	always @(posedge clk4) begin
-		we_init <= ( init_count[21:20] == 2'h1 && init_count[11:0] == 12'hfff ) ? 1'b1 : 1'b0;
-		init <= ( init_count == 22'h200000 ) ? 1'b0 : 1'b1;
-	end
+	//always @(posedge clk4) begin
+	//	we_init <= ( init_count[21:20] == 2'h1 && init_count[11:0] == 12'hfff ) ? 1'b1 : 1'b0;
+	//	init <= ( init_count == 22'h200000 ) ? 1'b0 : 1'b1;
+	//end
 	
 	/////////////////////////////////
 	////
