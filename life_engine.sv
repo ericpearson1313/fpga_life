@@ -802,19 +802,19 @@ module add431_cell
 				.lut_mask 	( (gg== 0) ? 16'h00CC :		// Sum=0     , Carry = B
 								  (gg== 1) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
 								  (gg== 2) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
-								  (gg== 3) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg== 3) ? 16'hFACC :		// Sum=A|C (for day4) // Sum=A  +C , Carry = B
 								  (gg== 4) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
 								  (gg== 5) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
-								  (gg== 6) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg== 6) ? 16'hFACC :		// Sum=A|C (for day4) // Sum=A  +C , Carry = B
 								  (gg== 7) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
 								  (gg== 8) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
-								  (gg== 9) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg== 9) ? 16'hFACC :		// Sum=A|C (for day4) // Sum=A  +C , Carry = B
 								  (gg==10) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
 								  (gg==11) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
-								  (gg==12) ? 16'h5ACC :		// Sum=A  +C , Carry = B
+								  (gg==12) ? 16'hFACC :		// Sum=A|C (for day4) // Sum=A  +C , Carry = B
 								  (gg==13) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
 								  (gg==14) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
-								/*(gg==15)*/ 16'h5A00 )		// Sum=A  +C , Carry = 0
+								/*(gg==15)*/ 16'h5A00 )		// Sum=A|C (for day4) // Sum=A  +C , Carry = 0
 			) _add8s (
 				.dataa	(lut_in[gg][0]),
 				.datab	(lut_in[gg][1]),
