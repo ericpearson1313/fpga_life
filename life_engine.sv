@@ -814,7 +814,7 @@ module add431_cell
 								  (gg==12) ? 16'hFACC :		// Sum=A|C (for day4) // Sum=A  +C , Carry = B
 								  (gg==13) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C 
 								  (gg==14) ? 16'h96E8 :		// Sum=A+B+C , Carry = A&B|C&B|A&C
-								/*(gg==15)*/ 16'h5A00 )		// Sum=A|C (for day4) // Sum=A  +C , Carry = 0
+								/*(gg==15)*/ 16'hFA00 )		// Sum=A|C (for day4) // Sum=A  +C , Carry = 0
 			) _add8s (
 				.dataa	(lut_in[gg][0]),
 				.datab	(lut_in[gg][1]),
