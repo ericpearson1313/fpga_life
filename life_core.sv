@@ -326,6 +326,7 @@ assign speaker_n = !speaker;
 	logic dummy2;
 	logic [3:0] xfer_count;
 	logic [11:0] shift_count;
+	logic [1:0] data_del;
 	// Control signals generate to shift data into the engine
 	logic [7:0] init_waddr;
 	//logic 		init;
@@ -334,11 +335,12 @@ assign speaker_n = !speaker;
 	always_ff @(posedge clk4 ) begin
 		// count transfer completions and lookup block write address
 		xfer_count 	<= ( reset ) ? 0 : ( c2c_last[3] ) ? xfer_count+1 : xfer_count;
-		shift_count <= ( reset ) ? 0 : ( c2c_last[3] ) ? HEIGHT*WIDTH : ( |shift_count ) ? shift_count - 1 : shift_count; 
+		shift_count <= ( reset ) ? 0 : ( c2c_last[3] ) ? HEIGHT*WIDTH-1 : ( |shift_count ) ? shift_count - 1 : shift_count; 
 		// engine init controls
-		{ init_word , init_sreg } <= ( c2c_last[3] ) ? { flash_sreg, 1'b0 } : { init_sreg, 1'b0 }; // sync load of async data, nice routing
+		{ data_del[0] , init_sreg } <= ( c2c_last[3] ) ? { flash_sreg, 1'b0 } : { init_sreg, 1'b0 }; // sync load of async data, nice routing
+		init_word <= data_del[0];
 		init_waddr 	<= addr_list[xfer_count]; // lookup write address
-	   init 			<= |shift_count; // Configure in shift mode
+	   init 			<= c2c_last[3] | (|shift_count); // Configure in shift mode
 		we_init 		<= shift_count == 1; // assert we as last bit shifted in
 	end
 	
