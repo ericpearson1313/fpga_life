@@ -1,3 +1,26 @@
+# AOC Day 4 Part 1 and 2
+
+Well the rules here are in a format similar to conways game of life just represent a roll of paper with a 1. 
+I can use my fpga life engine which is fully system verilog. I just need to add a cell counter. We solve part 1 with the difference of counts between starting generation and the 1st generation.
+Part 2 description implies there will be a limit on how paper rolls can be removed, so we can use the differce of counts between the starting generation and the million'th.
+
+This life engine is fast. It processes a 45x44 cell array each cycle at 192Mhz. Each 720x440 image generation is completed in 160 cycles giving us exactly 1.2 million generations/sec.
+Adding the cell counter was done in the video domain while displaying the image. Updating the life rules involved modifying some highly optimize code that directly coded fpga lut functional tables in order to optimized carry chain (fits 5 neighbourhood 8-count adders into a 16 LE with carry chain. 
+
+The life engine was normally seeded with random data, so I used the on-chip flash. the 8Kbytes available was enough to initialize the day 4 starting image.
+I modified the rom_build.c to read in the puzzle text and pack the "paper roll" bits into the spare 8Kbyes in the flash. I added verilog monitored the rom reads (serial) and during the correct addresss ranges shifted the bits into a 45x44 register block and then wrote that to the cell memory.
+
+
+
+The life engine is setup with a push button giveing single generations with a press&release, or full rate with press and hold.
+
+Here's the 0x1cf52c = 1,899,722'th generation and the stabilized cell count. 
+
+![millionth](568ba78.jpg)
+
+
+--- Old readme below -----------
+
 # fpga_life
 A FPGA implementation of Conways's game of life. 
 
