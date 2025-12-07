@@ -228,7 +228,7 @@ assign speaker_n = !speaker;
 	logic [1:0] flash_ram[0:32767];
 	always_ff @(posedge clk_out ) begin
 			if(  flash_valid && burst_addr >= 'h800 && burst_count[0] ) begin
-					flash_ram[{burst_addr[10-:4],burst_count[11-:11]}] <= { flash_data, whold };
+					flash_ram[{burst_addr[10-:4],burst_count[11-:11]}] <= { whold, flash_data };
 			end
 	end
 	
@@ -315,11 +315,11 @@ assign speaker_n = !speaker;
 	aoc_day7 i_day7 (
 		.clk		( hdmi_clk ),
 		.vsync	( vsync ),
-		.valid	( active_right ),
+		.valid	( active_right & active_row ),
 		.pin     ( ram_data ),
 		.pout    ( pout ),
 		.splits	( splits ),
-		.dimensions( dimensions )
+		.dimensions( timelines )
 		);
 	
 	// Create display window and RGB
@@ -329,7 +329,7 @@ assign speaker_n = !speaker;
 	assign { winr, wing, winb } = (((active_left) ? ram_data : pout ) == 3 ) ? 24'h0000ff : // rgb values 
 	                              (((active_left) ? ram_data : pout ) == 2 ) ? 24'hff0000 : // display ram on left
 	                              (((active_left) ? ram_data : pout ) == 1 ) ? 24'h00ff00 : // display processed on right
-		                                               24'h202040 ;
+		                                                                        24'h202040 ;
 	
 	//////////////////////////////// display done //////////////////////////////////
 
