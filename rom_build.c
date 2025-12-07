@@ -97,44 +97,22 @@ int main( int argc, char **argv )
 	fclose( text_fp );
 	printf("\ntext done\n");
 
-	// Read in Day 4 puzzle text file 
+	// Read in the Day 7 puzzle text file = 142*142 bytes
 	FILE *init_fp;
 	init_fp = fopen( "puzzle.txt", "r" );
 	printf("Read puzzle puzzle file\n");
-	int init_data[256][256];
-	int xx, yy;
-	yy = 0;
-	c = fgetc( init_fp );
-	while( !feof( init_fp ) ) {
-		xx = 0;
-		while( c != 0x0A ) {
-			init_data[yy][xx] = ( c == '@' ) ? 1 : 0;
-			xx++;
-			c = fgetc( init_fp );
-		}
-		while( xx < 256 ) {
-			init_data[yy][xx] = 0;
-			xx++;
-		}
-		yy++;
-		c = fgetc( init_fp );
-	}
-	while( yy < 256 ) {
-		for( xx = 0; xx < 256; xx++ ) {
-			init_data[yy][xx] = 0;
-		}
-		yy++;
-	}
-
-	// dump the 136x136 block
-	printf( "Day 4 puzzle data\n");
-	for( yy = 0; yy < 136; yy++ ) {
-		for( xx = 0 ; xx < 136; xx++ ) {
-			printf( "%c", ( init_data[yy][xx] ) ? '@' : '.' );
-		}
-		printf("\n");
+	char puzzle[142*142];
+	for( int ii = 0; ii < 142*142; ii++ ) {
+		puzzle[ii] = fgetc( init_fp );
 	}
 	fclose( init_fp );
+
+	// dump the puzzle 
+	printf( "Day 7 puzzle data\n");
+	for( int ii = 0; ii < 142*142; ii++ ) {
+		printf( "%c", puzzle[ii] );
+	}
+	printf("\n");
 
 
 	FILE  *mif_fp;
@@ -207,31 +185,31 @@ int main( int argc, char **argv )
 
 		fprintf(mif_fp, ";\n");
 	 }
-	 // Write init data, as 16 blocks of 4kbit=128 words of 32 bits, each holding a 45x44 section of the init_data.
-	 unsigned block[128]; // set of 128 32-bit words for a 4K page
-	 int pel, pel_idx;
-	 for( int blky = 0; blky < 4; blky++ ) {
-	 	for( int blkx = 0; blkx < 4; blkx++ ) {
-			for( int ii = 0; ii < 128; ii++ ) {
-				block[ii] = 0;
-			}
-			for( int yy = 0; yy < 44; yy++ ) {
-				for( int xx = 0; xx < 45; xx++ ) {
-					pel = init_data[blky*44+yy][blkx*45+xx];
-					pel_idx = yy*45+xx;
-					if( pel ) {
-						block[pel_idx>>5] |= (1<<(pel_idx&0x1f));
-					}
-				}	
-			}
-			for( int ii = 0; ii < 128; ii++ ) {
-				fprintf(mif_fp, "%03x : ", 2048+(blky*4+blkx)*128+ii );
-				for( int bit = 0; bit < 32; bit++ ) 
-					fputc( ((block[ii]>>bit) & 1 == 1 ) ? '1' : '0' , mif_fp);
-				fprintf(mif_fp, ";\n");
+	// Write puzzle data packed into 32 bit words, msb first
+	// write remaining bits and words as zero
+	int paddr;
+	unsigned code;
+	unsigned pdata;
+	paddr = 2048;
+	for( int ww = 0; ww < 65536; ww += 32, paddr++ ) { // 64kbit/8kbyte of flash as 2K of 32-bit words
+		pdata = 0;
+		if( ww < 142*142*2 ) { // Inside our window
+			for( int bb = 0; bb < 32; bb+=2 ) { // pack 2 bits per puzzle byte
+				code = 0;
+				if( ww + bb < 142*142*2 ) {
+					code = ( puzzle[(ww+bb)>>1] == 'S' ) ? 3 :
+                                               ( puzzle[(ww+bb)>>1] == '^' ) ? 2 : 0 ;
+				}
+				pdata = ( pdata << 2 ) | code;
 			}
 		}
-	}
+		// Write the word
+		fprintf(mif_fp, "%03x : ", paddr );
+		for( int bb = 0; bb < 32; bb++ ) {
+			fputc(((pdata>>(31-bb))&1) ? '1' : '0' , mif_fp);
+		}
+		fprintf(mif_fp, ";\n");
+	} 
 
 	 // complete file
 	 fprintf(mif_fp, "END\n" );
