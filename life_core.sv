@@ -205,325 +205,37 @@ end
 assign speaker = spk_toggle; 
 assign speaker_n = !speaker;
 
-/////////////////////
-//
-// Life Engine
-//
-/////////////////////
-/////////////////////////////
-	parameter WIDTH = 45;	// Datapath width, image width
-	parameter DEPTH = 256;	// memory depth, image height
-	parameter HEIGHT = 44;	// Datapath height
-	parameter DBITS = 8;		// depth address bitwidth
-	parameter GENS  = 1;	// hardware Generations per pass
-	parameter WIDTH_B = 16;  // blocks wide
-	parameter HEIGHT_B = 10; // blocks high
-/////////////////////////////
+	
+	//////////////////////////////////////////////
+	// Monitor flash reads and write ram copy   //
 
-
-	// Integrate the life engine
-	logic init_word;
-	logic [HEIGHT-1:0][WIDTH-1:0] read_word; // latched read word
-	logic [2:0][2:0][DBITS-1:0] raddr;
-	logic [DBITS-1:0] waddr;
-	logic we; // write enable of life calc output or current init word
-	logic sh; // shift in a row (from last cycle read)
-	logic ld; // latch a row into dout (from last cycle)
-	logic we_init; // selects init_word as we data source 
-	logic init;	
-	
-	life_engine_2D #(
-		.WIDTH( WIDTH ),
-		.DEPTH( DEPTH ),
-		.HEIGHT( HEIGHT ),
-		.DBITS( DBITS ),
-		.GENS(  GENS  )
-		)  _life_engine (
-		.clk  ( clk4 ),
-		.reset( reset ),
-		.raddr( raddr ),
-		.waddr( waddr ),
-		.we( we ),
-		//.sh( sh ),
-		.ld( ld ),  // loads addresssed word into dout port for the video scan
-		.dout( read_word ), // full array wordlatched by ld flag, for video shift reg
-		.init( init ), // data is shifted into word, hold 1M cycles-ish, write as need
-		.init_data( init_word ) // bit shift input
-	);
-	
-	// Generate Init word (lfsr for now)
-	// LFSR from: https://datacipy.elektroniche.cz/lfsr_table.pdf
-	
-	//logic [255:0] lfsr;
-	//always_ff @(posedge clk4 ) begin
-	//	if( reset ) begin
-	//			  lfsr <= { 16'b1011000001011000,  
-	//							16'b1100000100111010, 
-	//							16'b0101000001101111, 
-	//							16'b1000001001110000, 
-	//							16'b1101101100001001, 
-	//							16'b0101110111110010, 
-	//							16'b1011100000011111, 
-	//							16'b1111110000011111, 
-	//							16'b0010111111011001, 
-	//							16'b1100100100110111, 
-	//							16'b1100100110100000, 
-	//							16'b1011000110011111, 
-	//							16'b0111001010110001, 
-	//							16'b0011011000011000, 
-	//							16'b1001101101000100, 
-	//							16'b0101001100100001 }; // start non zero rand
-	//	end else begin // Taps 255 253 250 245  -- zewro based
-	//		lfsr <= {             lfsr[0],		// 255
-	//					 lfsr[255],		
-	//					 lfsr[254] ^ lfsr[0],		// 253th
-	//					 lfsr[253:252],
-	//					 lfsr[251] ^ lfsr[0],
-	//					 lfsr[250:247],
-	//					 lfsr[246] ^ lfsr[0],
-	//					 lfsr[245:1] };
-	//	end
-	//end
-	//
-	//assign init_word = lfsr[0];
-	
-	///////////////////////
-	// Init from flash
-	///////////////////////
-	
-
-	///////////////////////////
-	//    clk_out (6mhz)     //
-
-	logic [11:0] burst_count;
-	logic [11:0] burst_addr;
-	logic [HEIGHT-1:0][WIDTH-1:0] flash_sreg; // wasteful, but needed, else affects the big_whopper
+	logic [11:0] burst_count; // count of 4Kbit bursts
+	logic [11:0] burst_addr;  // latched of flash addr
+	logic        whold;
 	logic dummy;
 	always_ff @(posedge clk_out ) begin
 		burst_addr  <= ( flash_read && !flash_wait ) ? flash_addr : burst_addr;
 		burst_count <= ( flash_read && !flash_wait ) ? 0 : // addr phase
 						   ( flash_valid               ) ? burst_count + 1 : // data (bit) transfer
 																	  burst_count;
-		{ dummy, flash_sreg } <= ( flash_valid && burst_addr >= 'h800 && burst_count < (45*44) ) ? { flash_sreg, flash_data } : { 1'b0, flash_sreg };
+		whold <= ( flash_valid && burst_addr >= 'h800 && !burst_count[0] ) ? flash_data : whold;
 	end
 
-	// C2C 
-	
-	logic async_last; // signal data is shifted, assume pulse at 6Mhz is detectable on 192 Mhz.
-	always_ff @(posedge clk_out )
-		async_last  <= ( flash_valid && burst_addr >= 'h800 && burst_count == (45*44) ) ? 1'b1 : 1'b0;
-		
-	logic [3:0] c2c_last;
-	always_ff @(posedge clk4 )
-		c2c_last[3:0] <= { c2c_last[2] & c2c_last[1], c2c_last[1:0], async_last }; // transfer rising edge
-			
-	///////////////////////////
-	//    clk4 (192mhz)     //
-	
-	// Latch the assync array data, then shift it into the whopper asserting init
-	logic [0:15][7:0] addr_list = 128'h34353637444546475455565764656667;
-	logic [HEIGHT-1:0][WIDTH-1:0] init_sreg; // wasteful, but needed, else affects the big_whopper
-	logic dummy2;
-	logic [3:0] xfer_count;
-	logic [11:0] shift_count;
-	logic [1:0] data_del;
-	// Control signals generate to shift data into the engine
-	logic [7:0] init_waddr;
-	//logic 		init;
-	//logic 		init_word;
-	//logic 		we_init;
-	always_ff @(posedge clk4 ) begin
-		// count transfer completions and lookup block write address
-		xfer_count 	<= ( reset ) ? 0 : ( c2c_last[3] ) ? xfer_count+1 : xfer_count;
-		shift_count <= ( reset ) ? 0 : ( c2c_last[3] ) ? HEIGHT*WIDTH-1 : ( |shift_count ) ? shift_count - 1 : shift_count; 
-		// engine init controls
-		{ data_del[0] , init_sreg } <= ( c2c_last[3] ) ? { flash_sreg, 1'b0 } : { init_sreg, 1'b0 }; // sync load of async data, nice routing
-		init_word <= data_del[0];
-		init_waddr 	<= addr_list[xfer_count]; // lookup write address
-	   init 			<= c2c_last[3] | (|shift_count); // Configure in shift mode
-		we_init 		<= shift_count == 1; // assert we as last bit shifted in
+	// Flash data ram organized as r1w1 32K words x 2-bit
+	// it will take 
+	// flash ram written on slow flash clock. 
+	// flash ram read below on an application clock
+	logic [1:0] flash_ram[0:32767];
+	always_ff @(posedge clk_out ) begin
+			if(  flash_valid && burst_addr >= 'h800 && burst_count[0] ) begin
+					flash_ram[{burst_addr[10-:4],burst_count[11-:11]}] <= { flash_data, whold };
+			end
 	end
 	
 	// end of init from flash   //
 	//////////////////////////////
 	
-	
-	// Life Control state machine.
-	// Generates cell read and write addresses 
-	// and we and rd signals.
 
-	// Signal from video display (aready in clk4)
-	logic [DBITS-1:0] vraddr; // ASYNC loaded, but stable before use in clk4 domain
-	logic             vload;  // Pulse indication video read request and address stable.
-
-	// Generation read state machine, runs loops if life_go. 
-	// Min 2 cycles for life_go as maybe over-ridden
-	// Will complete 
-	
-	localparam IDLE_COUNT  = (2<<DBITS)-1;
-	localparam START_COUNT = 0;
-	localparam WRITE_DELAY = 6; // Cycles after read when I should sent write
-	localparam DONE_COUNT  = WIDTH_B*HEIGHT_B - 1;
-
-	// Life start, single pulse or continuous
-	logic life_go;
-	assign life_go = short_fire /* 1-shot generation */ || long_fire /* hold max gen speed */;
-	
-	
-	// Loop through image
-	logic [DBITS:0] read_cnt;
-	logic [3:0] base;
-	always_ff @( posedge clk4 ) begin
-		if( reset ) begin
-			read_cnt <= IDLE_COUNT; // idle state
-			base     <= 1; // base ram ddr
-		end else begin
-			if( read_cnt == IDLE_COUNT ) begin
-				read_cnt <= ( life_go ) ? START_COUNT : IDLE_COUNT; // when go starts at -1 ('h3ff)
-			end else if ( read_cnt == DONE_COUNT ) begin  // counts up to 105 giving 256+1lead+6pipe
-				read_cnt <= ( life_go ) ? START_COUNT : IDLE_COUNT; // restart if go unless vid pend
-			end else begin
-				read_cnt <= read_cnt + 1;
-			end
-			// Increment base when finished gen
-			base <= ( read_cnt == DONE_COUNT ) ? ((base == HEIGHT_B-1) ? 0 : base+1 ) : base; 
-		end
-	end
-	
-	
-	// Row address mapping pipeline. Packing 10 rows into 15 while 
-	// suporting top/bot wrap and not overwriting mem.
-	// Cost is 2 extra rows, one for row 0 and one always available for write.
-	// Need 4 of them for row-1, row, row+1, and base+1 (for write)
-	// 4 cycle pipeline
-	logic [3:0][3:0] row_reg; 
-	logic [3:0][3:0] base_reg;
-	logic [3:0][1:0] roweq0; // pipeline
-	logic [3:0][1:0] basebit0;
-	logic [3:0][4:0] basesum;
-	logic [3:0][4:0] basemod;
-	logic [3:0][3:0] adj_row;
-	always_ff @(posedge clk4) begin
-		row_reg[0] <= (read_cnt[7:4]==0) ? HEIGHT_B-1 : read_cnt[7:4]-1; // row-1
-		row_reg[1] <= (read_cnt == IDLE_COUNT) ? vraddr[7:4] : read_cnt[7:4]; // row
-		row_reg[2] <= (read_cnt[7:4]==HEIGHT_B-1) ? 0 : read_cnt[7:4]+1; // row+1
-		row_reg[3] <=  read_cnt[7:4]; // Write row
-		base_reg[0] <= base;
-		base_reg[1] <= base;
-		base_reg[2] <= base;
-		base_reg[3] <= (base==HEIGHT_B-1) ? 0 : base+1;
-		for( int ii = 0; ii < 4; ii++ ) begin
-			roweq0[ii][0] <= ( row_reg[ii] == 0 ) ? 1'b1 : 1'b0;
-			roweq0[ii][1] <= roweq0[ii][0];
-			basebit0[ii][0] <= base_reg[ii][0]; // lsb bit 0
-			basebit0[ii][1] <= basebit0[ii][0];
-			basesum[ii] <= { 1'b0, row_reg[ii] } - { 1'b0, base_reg[ii] };
-			basemod[ii] <= ( basesum[ii][4] || basesum[ii]==0 ) ? basesum[ii] + HEIGHT_B : basesum[ii];
-			adj_row[ii] <= ( roweq0[ii][1] ) ? ( basebit0[ii][1] ? 4'hf : 4'h0 ) : basemod[ii][3:0];
-		end // ii
-	end
-	
-	
-	// Column addressing pipeline
-	// Matching depth to row pipe
-	// does col+/- for life read
-	logic [3:0] col_mux;
-	logic [1:0][3:0] col_del;
-	logic [2:0][3:0] adj_col;
-	always_ff @(posedge clk4) begin
-		col_mux <= (read_cnt == IDLE_COUNT) ? vraddr[3:0] : read_cnt[3:0]; // col
-		col_del[0] <= col_mux;
-		col_del[1] <= col_del[0];
-		adj_col[0] <= col_del[1] - 1;
-		adj_col[1] <= col_del[1];
-		adj_col[2] <= col_del[1] + 1;
-	end
-	
-	// Assign the 9 read addresses
-	assign raddr[0][0] = { adj_row[0], adj_col[0] };
-	assign raddr[0][1] = { adj_row[0], adj_col[1] };
-	assign raddr[0][2] = { adj_row[0], adj_col[2] };
-	assign raddr[1][0] = { adj_row[1], adj_col[0] };
-	assign raddr[1][1] = { adj_row[1], adj_col[1] };
-	assign raddr[1][2] = { adj_row[1], adj_col[2] };
-	assign raddr[2][0] = { adj_row[2], adj_col[0] };
-	assign raddr[2][1] = { adj_row[2], adj_col[1] };
-	assign raddr[2][2] = { adj_row[2], adj_col[2] };
-
-	
-	logic [21:0] init_count; // init counter, 2 million cycles
-	
-	
-	// Pipe delay write address
-	// Write should be 6 cycles after read	
-	logic [WRITE_DELAY-2:0][7:0] waddr_del; // 5 cycle delay +1 for output reg itself
-	always_ff @(posedge clk4) begin
-		waddr_del <= { waddr_del[WRITE_DELAY-3:0], {adj_row[3], adj_col[1]} };
-	   waddr     <= ( we_init ) ? init_waddr : waddr_del[WRITE_DELAY-2];
-	end
-	
-	// Created delayed write enable (accout for row/col adj and write delay
-	logic [WRITE_DELAY-2+4:0] we_del;
-	always_ff @(posedge clk4) begin
-		we_del <= { we_del[WRITE_DELAY-3+4:0], ((read_cnt == IDLE_COUNT) ? 1'b0 : 1'b1)};
-		we     <= we_init | we_del[WRITE_DELAY-2+4];
-	end
-	
-	// Create and delay ld signal for video read
-	logic [3:0] ld_del;
-	always_ff @(posedge clk4) begin
-		{ ld, ld_del } <= { ld_del, vload };
-	end
-	
-	
-	////////////////////////////////////////////////////
-	// Generation counters
-	// count seconds, and generation ticks 
-	logic        gen_tick;
-	logic [47:0] gen_count;
-	always_ff@( posedge clk4 ) begin
-		gen_tick <=  ( read_cnt == DONE_COUNT ) ? 1'b1 : 1'b0;
-		gen_count <= ( gen_tick ) ? gen_count + GENS : gen_count;
-	end
-	
-	logic [25:0] second_count;	// clk = 48Mhz osc
-	logic 	    second_tick; // 1 pulse / sec
-	always_ff @(posedge clk) begin
-		second_count <= ( second_count == 26'd48_000_000 - 1 ) ? 26'd0 : second_count + 1;
-		second_tick <= ( second_count == 26'd0 ) ? 1'b1 : 1'b0;
-	end
-	
-	logic [31:0] genpersec_latch;
-	logic [31:0] genpersec_count;
-	logic [3:0] sec_del;
-	always_ff @(posedge clk4) begin
-		sec_del[3:0] <= { sec_del[2:0], second_tick };
-		if( sec_del[2] && !sec_del[3] ) begin // second pulse rising edge
-			genpersec_latch <= genpersec_count;
-			genpersec_count <= ( gen_tick ) ? 1 : 0;
-		end else begin
-			genpersec_latch <= genpersec_latch;
-			genpersec_count <= ( gen_tick ) ? genpersec_count + GENS : genpersec_count;
-		end
-	end
-	
-	////////////////////////////////////////////////////
-	// Initialization cycles. Wait for startup
-	// Write 256 blocks after waiting 4096 cycles each (1Mcycles total)
-	
-	always @(posedge clk4) begin	
-		if( reset ) begin
-			init_count <= 0;
-		end else begin
-			init_count <= ( init_count == 22'h200000 ) ? 22'h200000 : init_count + 1;
-		end
-	end
-		
-	// wait 128K cycles after reset, then 64k cycles of 256row writes every 256 cycles, then stop and hold
-	//always @(posedge clk4) begin
-	//	we_init <= ( init_count[21:20] == 2'h1 && init_count[11:0] == 12'hfff ) ? 1'b1 : 1'b0;
-	//	init <= ( init_count == 22'h200000 ) ? 1'b0 : 1'b1;
-	//end
 	
 	/////////////////////////////////
 	////
@@ -563,20 +275,7 @@ assign speaker_n = !speaker;
 	);
 	
 	
-//////////////////////////////////////////////////////////////////////////////	
-//////////////////// LIFE  VIDEO  GENERATOR /////////////////////////////////
-
-	// Video lines displaying life cells will be shifted out of register (45 pels wide), which are loaded every WIDTH=45 cycles.
-	// At the start of each block row the next address is calculated and with a toggle, ASYNC sent over to life clk domain. The address of the block
-	// will be inserted into the life accesses  and the output buffer loaded from block read data row muxed and async transmission back in time for next load.
-	// Life areana is 16 blocks x 45 = 720 pels By 10 blocks x 44 = 440 pels high
-	// Display it at (40,20) till (760,460) and generate 2 colors
-	
-	
-	// Video shift register
-	// VIdeo clock domain
-
-
+	////////////////////////// Video display of puzzle data ////////////////////
 	// Video X, Y Counter
 	logic [9:0] xcnt, ycnt; // Position counters
 	logic blank_d1;
@@ -588,102 +287,51 @@ assign speaker_n = !speaker;
 					  ( blank && !blank_d1 ) ? ycnt + 1 : ycnt;
 	end
 
-
-	// Life Cell block row addressing
-	logic active; // active life window
-	logic vid_tgl; // toggle ASYNC request
-	logic [5:0] vid_x;
-	logic [3:0] vid_bx;
-	logic [5:0] vid_y;
-	logic [3:0] vid_by;
+	// Read the rom during two 142x142 windows (128,128) and (384,128)
+	// and output RGB and asssert a window flag
+	
+	logic active_row, active_row_d;
+	logic active_left; // active life window
+	logic active_right; // active life window
+	logic [14:0] row_addr;
+	logic [14:0] pel_addr;
+	logic [1:0] ram_data;
 	always @(posedge hdmi_clk) begin
 		// get active window
-		active <= ( xcnt >=  39 && 
-						xcnt <  759 &&
-						ycnt >=  19 &&
-						ycnt <  459 	) ? 1'b1 : 1'b0;
-		// Clear counters during vsync and increment during active
-		if( vsync ) begin // should always be corrent but reset anyway
-			vid_x <= 0;
-			vid_bx <= 1;  // we pre-fetch 
-			vid_y <= 0;
-			vid_by <= 0;
-		end else if( active ) begin // step through block row addressing
-			vid_x  <= ( vid_x == WIDTH-1  ) ? 0 : vid_x + 1; // walk row within blocks
-			vid_bx <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? 0 : // wrap at pic edge
-			          ( vid_x == WIDTH-1 ) ? vid_bx + 1 : vid_bx; // step at the edge of each.
-			vid_y  <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1) ? (( vid_y == HEIGHT-1 ) ? 0 : vid_y + 1 ) : vid_y; // step down row within a block 
-			vid_by <= ( vid_x == WIDTH-1  && vid_bx == WIDTH_B-1    && vid_y == HEIGHT-1) ? (( vid_by == HEIGHT_B-1 ) ? 0 : vid_by+1 ) : vid_by; // step down through frame
-			vid_tgl<= ( vid_x == WIDTH-1  ) ? !vid_tgl : vid_tgl; // Toggle as addressed update to next block
-		end // active
-	end
-			
-//////////////////////////////////////////////////////////////////////////////
-///////////////////////   Clock Domain Change ////////////////////////////////			
-
-	// toggle from hdmi_clk domain generates pulse in clk4 domain
-	logic [4:0] vid_cc_tgl;
-	always @(posedge clk4) vid_cc_tgl <= { vid_cc_tgl[3]^vid_cc_tgl[2], vid_cc_tgl[2:0], vid_tgl/*ASYNC*/ };
-		
-	// Register counters needed for address calc
-	// we'll wait long enough before using, long? timing path ok
-	logic [3:0] vid_cc_bx;
-	logic [5:0] vid_cc_y;
-	logic [3:0] vid_cc_by;
-	always @(posedge clk4 ) begin 
-		vid_cc_bx	<= vid_bx; 
-		vid_cc_y		<= vid_y;
-		vid_cc_by	<= vid_by;
+		active_row  <= ( !blank && ycnt >= 128 && ycnt < 128+142 ) ? 1'b1 : 1'b0;
+		active_row_d<= active_row;
+		active_left <= ( !blank && xcnt >= 128 && xcnt < 128+142 ) ? 1'b1 : 1'b0; 
+		active_right<= ( !blank && xcnt >= 384 && xcnt < 384+142 ) ? 1'b1 : 1'b0;
+		// Ram read address maintenance
+		row_addr <= ( vsync ) ? 0 : ( !active_row && active_row_d ) ? row_addr +'d142 : row_addr;
+		pel_addr <= ( active_left || active_right ) ? pel_addr + 1 : row_addr ;
+		ram_data <= flash_ram[pel_addr];
 	end
 	
-	// Video read pulse and address to RAM
-	assign vraddr[7:0] = { vid_cc_by[3:0], vid_cc_bx[3:0] }; // will be re-mapped via BASE
-	assign vload       = vid_cc_tgl[4]; // address stable
-
-	// Full array of data will be latched by mem system, need to mux, do it from mem clock, but captured by video clock
-	logic [WIDTH-1:0] mem_rd; // loaded data block row
-	assign mem_rd = read_word[vid_cc_y[5:0]];	//ASYNC MUX	-- allows flexible place & route for this big mux
-			
-			
-///////////////////////   Clock Domain Revert ////////////////////////////////			
-//////////////////////////////////////////////////////////////////////////////	
-			
-	logic [WIDTH-1:0] life_row; // loaded async
-	logic life_fg, life_bg;
-			
-	always_ff @(posedge hdmi_clk) begin
-			if( active ) begin
-				if( vid_x == WIDTH-1 ) begin
-					life_row <= mem_rd; // ASYNC (on purpose)
-				end else begin
-					life_row <= { 1'b1, life_row[WIDTH-1:1] };
-				end
-			end
-			// Overlay
-			life_fg <= ( active &&  life_row[0] ) ? 1'b1 : 1'b0;
-			life_bg <= ( active && !life_row[0] ) ? 1'b1 : 1'b0;
-	end
-
-	// Sum count of displayed life_fg cells.
-	logic [31:0] life_sum;
-	logic [31:0] life_acc;	
-	logic [31:0] life_inc;
-	logic vsync_del;
-	always_ff @(posedge hdmi_clk) begin
-		vsync_del <= vsync;
-		if ( !vsync_del && vsync ) begin // at rising edge of vsync
-			life_acc <= 0 ;
-			life_sum <= life_acc;
-		end else if( life_fg ) begin
-			life_acc <= life_inc;
-		end
-	end
-	bcd_inc32 i_bcdinc( .in( life_acc ), .out( life_inc ) );
+	// Instantiate day 7 logic
+	logic [15:0] splits; // Part 1
+	logic [63:0] timelines; // part2
+	logic [1:0] pout;
+	aoc_day7 i_day7 (
+		.clk		( hdmi_clk ),
+		.vsync	( vsync ),
+		.valid	( active_right ),
+		.pin     ( ram_data ),
+		.pout    ( pout ),
+		.splits	( splits ),
+		.dimensions( dimensions )
+		);
 	
+	// Create display window and RGB
+	logic window;
+	logic [7:0] winr, wing, winb;
+	assign window = ( active_row && ( active_left || active_right )) ? 1'b1 : 1'b0; // two display windows
+	assign { winr, wing, winb } = (((active_left) ? ram_data : pout ) == 3 ) ? 24'h0000ff : // rgb values 
+	                              (((active_left) ? ram_data : pout ) == 2 ) ? 24'hff0000 : // display ram on left
+	                              (((active_left) ? ram_data : pout ) == 1 ) ? 24'h00ff00 : // display processed on right
+		                                               24'h202040 ;
 	
-///////////////////////// LIFE VIDEO GENERATION done /////////////////////////
-//////////////////////////////////////////////////////////////////////////////
-	
+	//////////////////////////////// display done //////////////////////////////////
 
 	// Font Generator
 	logic [7:0] char_x, char_y;
@@ -759,19 +407,17 @@ assign speaker_n = !speaker;
 		.flash_wait ( flash_wait 		 ),
 		.flash_valid( flash_valid 		 )
 	);
-
-	// Overlay Text - Dynamic
-	logic [10:0] id_str;
-	string_overlay #(.LEN(21)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('h01), .out( id_str[0]), .str( "Conway's Game of LIFE" ) );
-	hex_overlay    #(.LEN(12 )) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h50),.y('d59), .out( id_str[1]), .in( gen_count[47:0] ) );
-   //bin_overlay    #(.LEN(1 )) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char), .x('h46),.y('h09), .out( id_str[2]), .in( disp_id == 32'h0E96_0001 ) );
-	//string_overlay #(.LEN(14)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d119),.y('d58), .out( id_str[3]), .str( "commit 0123abc" ) );
-	hex_overlay    #(.LEN(8 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('h30),.y('d59), .out( id_str[4]), .in( genpersec_latch[31:0] ) );
-	string_overlay #(.LEN(17)) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h48), .y('d58), .out( id_str[5]), .str( "Total Generations" ) );
-	string_overlay #(.LEN(15)) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('h28), .y('d58), .out( id_str[6]), .str( "Generations/sec" ) );
-	hex_overlay    #(.LEN(8 )) _id7(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char), .x('d45),.y('d1), .out( id_str[7]), .in( life_sum ) );
-	string_overlay #(.LEN(9 )) _id8(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d35), .y('d1), .out( id_str[8]), .str( "AoC Day 4" ) );
 	
+	
+
+	
+	// Overlay Text - Dynamic
+	logic [10:0] id_str; 
+	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 7" ) );
+	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d40), .out( id_str[1]), .str( "Part 1  0x" ) );
+	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d42), .out( id_str[2]), .str( "Part 2  0x" ) );
+	hex_overlay    #(.LEN(4 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d40), .out( id_str[3]), .in( splits[15:0] ) );
+	hex_overlay    #(.LEN(16)) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d42), .out( id_str[4]), .in( timelines[63:0] ) );
 	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
@@ -781,8 +427,6 @@ assign speaker_n = !speaker;
 	logic [7:0] overlay_red, overlay_green, overlay_blue;
 	assign { overlay_red, overlay_green, overlay_blue } =
 			( overlay ) ? 24'hFFFFFF :
-			( life_fg ) ? 24'h00c0c0 /* smpte_turquise_surf */ :
-			( life_bg ) ? 24'h1d1d1d /* smpte_eerie_black   */ :
 			( text_ovl && text_color == 4'h1 ) ? 24'hf00000 :
 			( text_ovl && text_color == 4'h2 ) ? 24'hFFFFFF :
 			( text_ovl && text_color == 4'h3 ) ? 24'hff0000 :			
@@ -818,9 +462,9 @@ assign speaker_n = !speaker;
 		// YUV mode input
 		.yuv_mode		( 0 ), // use YUV2 mode, cheap USb capture devices provice lossless YUV2 capture mode 
 		// RBG Data
-		.red   ( ( !life_fg & !life_bg ) ? ( test_red   | overlay_red   ) : overlay_red   ),
-		.green ( ( !life_fg & !life_bg ) ? ( test_green | overlay_green ) : overlay_green ),
-		.blue  ( ( !life_fg & !life_bg ) ? ( test_blue  | overlay_blue  ) : overlay_blue  ),
+		.red   ( ( window ) ? winr : ( test_red   | overlay_red   )  ),
+		.green ( ( window ) ? wing : ( test_green | overlay_green )  ),
+		.blue  ( ( window ) ? winb : ( test_blue  | overlay_blue  )  ),
 		// HDMI and DVI encoded video
 		.hdmi_data( hdmi2_data ),
 		.dvi_data( dvi_data )
@@ -910,20 +554,17 @@ module debounce(
 
 endmodule
 
-module bcd_inc32 (
-	input logic [7:0][3:0] in,
-	output logic [7:0][3:0] out
+module aoc_day7( 
+	input clk,
+	input vsync,				 // tie to vsync restart each frame
+	input logic       valid, // puzzle data valid
+	input logic [1:0] pin,     // puzzle row data 
+	output logic [1:0] pout,
+	output logic [15:0] splits, // Count of splits for total frame
+	output logic [63:0] dimensions
 	);
-	logic [8:0] c;
-	always_comb begin // should be a loop, but ... verilator?
-		c[0] = 1;
-		out[0] = (in[0]==4'h9&&c[0])?4'h0:in[0]+c[0]; c[1]=(in[0]==4'h9&&c[0])?1'b1:1'b0;
-		out[1] = (in[1]==4'h9&&c[1])?4'h0:in[1]+c[1]; c[2]=(in[1]==4'h9&&c[1])?1'b1:1'b0;
-		out[2] = (in[2]==4'h9&&c[2])?4'h0:in[2]+c[2]; c[3]=(in[2]==4'h9&&c[2])?1'b1:1'b0;
-		out[3] = (in[3]==4'h9&&c[3])?4'h0:in[3]+c[3]; c[4]=(in[3]==4'h9&&c[3])?1'b1:1'b0;
-		out[4] = (in[4]==4'h9&&c[4])?4'h0:in[4]+c[4]; c[5]=(in[4]==4'h9&&c[4])?1'b1:1'b0;
-		out[5] = (in[5]==4'h9&&c[5])?4'h0:in[5]+c[5]; c[6]=(in[5]==4'h9&&c[5])?1'b1:1'b0;
-		out[6] = (in[6]==4'h9&&c[6])?4'h0:in[6]+c[6]; c[7]=(in[6]==4'h9&&c[6])?1'b1:1'b0;
-		out[7] = (in[7]==4'h9&&c[7])?4'h0:in[7]+c[7]; 
-	end
+	
+	assign pout = ~pin;
+	always @(posedge clk) splits <= ( vsync ) ? 0 : ( valid ) ? splits + 1 : splits;
+	assign dimensions = 64'h0123456789abcdef;
 endmodule
