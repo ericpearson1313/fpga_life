@@ -317,6 +317,7 @@ assign speaker_n = !speaker;
 		.clk		( hdmi_clk ),
 		.vsync	( vsync ),
 		.valid	( active_right ),
+		.first   ( ycnt == 128 ), 
 		.ovalid  ( ovalid ),
 		.pin     ( ram_data ),
 		.pout    ( pout ),
@@ -560,6 +561,7 @@ module aoc_day7(
 	input clk,
 	input vsync,				 // tie to vsync restart each frame
 	input logic       valid, // puzzle data valid
+	input logic 		first, // indiates first row, all above row is considered "."
 	output logic      ovalid, // valid aligned with output
 	input logic [1:0] pin,     // puzzle row data 
 	output logic [1:0] pout,
@@ -583,16 +585,18 @@ module aoc_day7(
 	// read address to mem read to aligned output
 	
 	logic [7:0] read_addr;
-	logic [1:0] cread;
-	logic [63:0] tread;
+	logic [1:0] cread, cpreread;
+	logic [63:0] tread, tpreread;
 	logic [63:0] tmem [0:255];
 	logic [1:0]  cmem [0:255];
 	
 	always_ff @(posedge clk) begin
 		read_addr <= ( !valid ) ? 0 : read_addr + 1;
-		tread     <= tmem[read_addr];
-		cread     <= cmem[read_addr];
+		tpreread     <= tmem[read_addr];
+		cpreread     <= cmem[read_addr];
 	end
+	assign tread = ( first ) ? 64'h0 : tpreread;
+	assign cread = ( first ) ? 2'h0  : cpreread;
 	
 	// input p-code delay buffers
 	// 3 wide window for prev timeline and prev and curent flash codes
@@ -600,7 +604,7 @@ module aoc_day7(
 	logic [1:0] pcode;
 	logic [2:0][1:0] pdel;
 	logic [2:0][1:0] cdel;
-	logic [2:0][1:0] tdel;
+	logic [2:0][63:0] tdel;
 	always_ff @(posedge clk) begin
 		pcode <= pin;
 		pdel[2:0] <= { pdel[1:0], pcode };
@@ -627,11 +631,14 @@ module aoc_day7(
 	// Rules: copy ^, copy S, else "|" if left_split, above, rigth_split
 	logic [1:0] cnext;
 	always_ff @(posedge clk) begin
-		cnext <= ( pdel[1] == 2 ) ? 2 :  // copy ^
-				   ( pdel[1] == 3 ) ? 3 :  // copy S
-					( pdel[1] == 0 && pdel[2] == 2 && ( cdel[2] == 1 || cdel[2] == 3 )) ? 1 : // spit from left
-					( pdel[1] == 0 && pdel[0] == 2 && ( cdel[0] == 1 || cdel[0] == 3 )) ? 1 : // spit from right
-					( pdel[1] == 0 && cdel[1] == 1 ) ? 1 : 0;
+		cnext <= ( pdel[1] == 2                 ) ? 2 :  // copy ^
+				   ( pdel[1] == 3                 ) ? 3 :  // copy S
+				   ( pdel[1] == 1                 ) ? 0 :  // no "|"'s present in puzzle text
+					(                 cdel[1] == 3 ) ? 1 : // above "S"
+					(                 cdel[1] == 1 ) ? 1 : // above energy
+					( pdel[2] == 2 && cdel[2] == 1 ) ? 1 : // spit from left
+					( pdel[0] == 2 && cdel[0] == 1 ) ? 1 : 0; // spit from right
+																							
 	end
 	assign ovalid = valid_del[3];
 	assign pout = cnext;
@@ -642,13 +649,13 @@ module aoc_day7(
 	logic [63:0] tnext;
 	logic [63:0] tacc, thold;
 	always_ff @(posedge clk) begin
-		tnext <=   ( pdel[1] == 3 ) ? 64'd1 : // Initial "S" seed for timeline
-		           ( pdel[1] == 2 ) ? 64'd0 : // splitter "^" has zero timelines
-					  ( pdel[1] == 1 ) ? 64'h0 : // cannot happen, '|" not present in puzzlle input, only our output
-				   ((( pdel[1] == 0 && cdel[1] == 1 ) ? tdel[1] : 64'd0 ) +
-				    (( pdel[1] == 0 && pdel[2] == 2 && ( cdel[2] == 1 || cdel[2] == 3 )) ? tdel[2] : 64'd0 ) +
-				    (( pdel[1] == 0 && pdel[0] == 2 && ( cdel[0] == 1 || cdel[0] == 3 )) ? tdel[0] : 64'd0 ) );
-		tacc <= ( valid_del[3] ) ? tacc + tnext : tacc;	// accumulate over the row
+		tnext <=   ( pdel[1] == 3                 ) ? 64'd1   : // Initial "S" seed for timeline
+		           ( pdel[1] == 2                 ) ? 64'd0   : // splitter "^" has zero timelines
+					  ( pdel[1] == 1                 ) ? 64'h0   : // cannot happen, '|" not present in puzzlle input, only our output
+				   ((( cdel[1] == 3 || cdel[1] == 1 ) ? tdel[1] : 64'd0 ) +
+				    (( pdel[2] == 2 && cdel[2] == 1 ) ? tdel[2] : 64'd0 ) +
+				    (( pdel[0] == 2 && cdel[0] == 1 ) ? tdel[0] : 64'd0 ) );
+		tacc <=  ( valid_del[3] ) ? tacc + tnext : 0 ;	// accumulate over the row
 		thold <= ( !valid_del[3] && valid_del[4] ) ? tacc : thold;  
 	end
 	assign dimensions = thold;
