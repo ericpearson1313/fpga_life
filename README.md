@@ -1,3 +1,15 @@
+# AOC Day 7 Part 1 and 2
+
+Built this FPGA on day 4 fpga with the life engine removed. I modified rom_build.c to insert the day 7 puzzle text coded as a 2-bit image 142x142 into the flash mif file.
+Adding logic to display the puzzle image on the left and the processed image on the right was needed for my visual statisfaction. The accumulation for part 1 and 2 are
+displayed on the screen as hex (not BCD).
+
+Overall a holiday picture. (coding ^=red, S=blue, |=green)
+
+![christmas_tree](3be49be.jpg)
+
+
+
 # AOC Day 4 Part 1 and 2
 
 Well the rules here are in a format similar to conways game of life just represent a roll of paper with a 1. 
