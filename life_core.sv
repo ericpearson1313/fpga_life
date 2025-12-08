@@ -300,8 +300,8 @@ assign speaker_n = !speaker;
 		// get active window
 		active_row  <= ( !blank && ycnt >= 128 && ycnt < 128+142 ) ? 1'b1 : 1'b0;
 		active_row_d<= active_row;
-		active_left <= ( !blank && xcnt >= 128 && xcnt < 128+142 ) ? 1'b1 : 1'b0; 
-		active_right<= ( !blank && xcnt >= 384 && xcnt < 384+142 ) ? 1'b1 : 1'b0;
+		active_left <= ( active_row && !blank && xcnt >= 128 && xcnt < 128+142 ) ? 1'b1 : 1'b0; 
+		active_right<= ( active_row && !blank && xcnt >= 384 && xcnt < 384+142 ) ? 1'b1 : 1'b0;
 		// Ram read address maintenance
 		row_addr <= ( vsync ) ? 0 : ( !active_row && active_row_d ) ? row_addr +'d142 : row_addr;
 		pel_addr <= ( active_left || active_right ) ? pel_addr + 1 : row_addr ;
@@ -312,10 +312,12 @@ assign speaker_n = !speaker;
 	logic [15:0] splits; // Part 1
 	logic [63:0] timelines; // part2
 	logic [1:0] pout;
+	logic ovalid; // pout matched valid
 	aoc_day7 i_day7 (
 		.clk		( hdmi_clk ),
 		.vsync	( vsync ),
-		.valid	( active_right & active_row ),
+		.valid	( active_right ),
+		.ovalid  ( ovalid ),
 		.pin     ( ram_data ),
 		.pout    ( pout ),
 		.splits	( splits ),
@@ -325,7 +327,7 @@ assign speaker_n = !speaker;
 	// Create display window and RGB
 	logic window;
 	logic [7:0] winr, wing, winb;
-	assign window = ( active_row && ( active_left || active_right )) ? 1'b1 : 1'b0; // two display windows
+	assign window = ( active_left || ovalid ) ? 1'b1 : 1'b0; // two display windows
 	assign { winr, wing, winb } = (((active_left) ? ram_data : pout ) == 3 ) ? 24'h0000ff : // rgb values 
 	                              (((active_left) ? ram_data : pout ) == 2 ) ? 24'hff0000 : // display ram on left
 	                              (((active_left) ? ram_data : pout ) == 1 ) ? 24'h00ff00 : // display processed on right
@@ -558,13 +560,107 @@ module aoc_day7(
 	input clk,
 	input vsync,				 // tie to vsync restart each frame
 	input logic       valid, // puzzle data valid
+	output logic      ovalid, // valid aligned with output
 	input logic [1:0] pin,     // puzzle row data 
 	output logic [1:0] pout,
 	output logic [15:0] splits, // Count of splits for total frame
 	output logic [63:0] dimensions
 	);
+	//assign ovalid = valid;
+	//assign pout = ~pin;
+	//always_ff @(posedge clk) splits <= ( vsync ) ? 0 : ( valid ) ? splits + 1 : splits;
+	//assign dimensions = 64'h0123456789abcdef;
 	
-	assign pout = ~pin;
-	always @(posedge clk) splits <= ( vsync ) ? 0 : ( valid ) ? splits + 1 : splits;
-	assign dimensions = 64'h0123456789abcdef;
+	// Delayed version of valid to drive everything
+	
+	logic [20:0] valid_del;
+	always_ff @(posedge clk)
+		valid_del[20:0] <= { valid_del[19:0], valid };
+
+	
+	
+	// Memory buffers for prev scanlines of timeline cell counts (64) and prev coded line (2)
+	// read address to mem read to aligned output
+	
+	logic [7:0] read_addr;
+	logic [1:0] cread;
+	logic [63:0] tread;
+	logic [63:0] tmem [0:255];
+	logic [1:0]  cmem [0:255];
+	
+	always_ff @(posedge clk) begin
+		read_addr <= ( !valid ) ? 0 : read_addr + 1;
+		tread     <= tmem[read_addr];
+		cread     <= cmem[read_addr];
+	end
+	
+	// input p-code delay buffers
+	// 3 wide window for prev timeline and prev and curent flash codes
+	
+	logic [1:0] pcode;
+	logic [2:0][1:0] pdel;
+	logic [2:0][1:0] cdel;
+	logic [2:0][1:0] tdel;
+	always_ff @(posedge clk) begin
+		pcode <= pin;
+		pdel[2:0] <= { pdel[1:0], pcode };
+		cdel[2:0] <= { cdel[1:0], cread };
+		tdel[2:0] <= { tdel[1:0], tread };
+	end
+
+	
+	// Calculation if this is a part 1 split
+	// code: "|" - 1, "^" - 2, "S" - 3, else nothing
+	logic split_flag;
+	assign split_flag = ( pdel[1] == 2 && ( cdel[1] == 1 || cdel[1] == 3 )) ? 1'b1 : 1'b0;
+
+	// Split accumulator cleared at vsync
+	always_ff @(posedge clk) begin
+		if( vsync ) begin
+			splits <= 0;
+		end else if ( valid_del[2] && split_flag ) begin
+			splits <= splits + 1;
+		end
+	end
+	
+	// Calculations for updated current cell coding (to written to mem)
+	// Rules: copy ^, copy S, else "|" if left_split, above, rigth_split
+	logic [1:0] cnext;
+	always_ff @(posedge clk) begin
+		cnext <= ( pdel[1] == 2 ) ? 2 :  // copy ^
+				   ( pdel[1] == 3 ) ? 3 :  // copy S
+					( pdel[1] == 0 && pdel[2] == 2 && ( cdel[2] == 1 || cdel[2] == 3 )) ? 1 : // spit from left
+					( pdel[1] == 0 && pdel[0] == 2 && ( cdel[0] == 1 || cdel[0] == 3 )) ? 1 : // spit from right
+					( pdel[1] == 0 && cdel[1] == 1 ) ? 1 : 0;
+	end
+	assign ovalid = valid_del[3];
+	assign pout = cnext;
+	// Calcuations for updateing the timeline count per part2 (to be written to mem)
+	// we see which neighbours we will add to the timeline sum
+	// we also have the special case of S which gets the inital timeline of 1.
+	// timeline accumulator cleared before each row, double buffer to hold the output
+	logic [63:0] tnext;
+	logic [63:0] tacc, thold;
+	always_ff @(posedge clk) begin
+		tnext <=   ( pdel[1] == 3 ) ? 64'd1 : // Initial "S" seed for timeline
+		           ( pdel[1] == 2 ) ? 64'd0 : // splitter "^" has zero timelines
+					  ( pdel[1] == 1 ) ? 64'h0 : // cannot happen, '|" not present in puzzlle input, only our output
+				   ((( pdel[1] == 0 && cdel[1] == 1 ) ? tdel[1] : 64'd0 ) +
+				    (( pdel[1] == 0 && pdel[2] == 2 && ( cdel[2] == 1 || cdel[2] == 3 )) ? tdel[2] : 64'd0 ) +
+				    (( pdel[1] == 0 && pdel[0] == 2 && ( cdel[0] == 1 || cdel[0] == 3 )) ? tdel[0] : 64'd0 ) );
+		tacc <= ( valid_del[3] ) ? tacc + tnext : tacc;	// accumulate over the row
+		thold <= ( !valid_del[3] && valid_del[4] ) ? tacc : thold;  
+	end
+	assign dimensions = thold;
+	
+	// Memory write address and we for cur timeline and codes
+	logic [7:0] write_addr;
+	always_ff @(posedge clk) begin
+		write_addr <= ( valid_del[3] ) ? write_addr+1 : 0;
+		if( valid_del[3] ) begin
+			tmem[write_addr] <= tnext;
+			cmem[write_addr] <= cnext;
+		end
+	end
+	
 endmodule
