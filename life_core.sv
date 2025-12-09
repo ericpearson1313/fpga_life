@@ -228,7 +228,7 @@ assign speaker_n = !speaker;
 	logic [63:0] box_ram1[0:1023];
 	logic [63:0] box_ram2[0:1023];
 	always_ff @(posedge clk_out ) begin
-			if(  flash_valid && burst_addr >= 'h800 && burst_count[0] ) begin
+			if(  flash_valid && burst_addr >= 'h800 && burst_count[5:0] == 63 ) begin
 					box_ram1[{burst_addr[10-:4],burst_count[11-:6]}] <= { whold[62:0], flash_data };
 					box_ram2[{burst_addr[10-:4],burst_count[11-:6]}] <= { whold[62:0], flash_data };
 			end
@@ -308,15 +308,32 @@ assign speaker_n = !speaker;
 	
 	// Instantiate day 8 logic
 	// TBD
-
+	
+	// Day 8 part 2 hardware
+	// Process
+	// init color table w1r2 mem (pair)
+	// Map the 2nd color table read to raster access during right window window
+	// wait button press
+	// find next shortest path (full search boxs pairs)
+	// Take a r/w pass thru the color table
+	// if path sits on two different colors map all higher color to the lower color
+	// and check if all colors are now == 0 and set done
+	// if not done and long_press loop back for next shorted path pass.
+	// else if not done wait button press and loop back for next shortest pass
+	// done
+	
+	
+	
+	
+	
 	
 	// Create display window and RGB
 	logic window;
 	logic [7:0] winr, wing, winb;
 	assign window = ( active_left || active_right ) ? 1'b1 : 1'b0; // two display windows
-	assign { winr, wing, winb } = {{ ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4] },
-	                               { ycnt[4], xcnt[5], ycnt[6], xcnt[7], ycnt[4], xcnt[5], ycnt[6], xcnt[7] },
-											 { xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5] }};
+	assign { winr, wing, winb } = { { ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4] },
+	                               ~{ ycnt[4], xcnt[5], ycnt[6], xcnt[7], ycnt[4], xcnt[5], ycnt[6], xcnt[7] },
+											  { xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5] } };
 	
 	//////////////////////////////// display done //////////////////////////////////
 
