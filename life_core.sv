@@ -211,24 +211,26 @@ assign speaker_n = !speaker;
 
 	logic [11:0] burst_count; // count of 4Kbit bursts
 	logic [11:0] burst_addr;  // latched of flash addr
-	logic        whold;
+	logic [63:0] whold;
 	logic dummy;
 	always_ff @(posedge clk_out ) begin
 		burst_addr  <= ( flash_read && !flash_wait ) ? flash_addr : burst_addr;
 		burst_count <= ( flash_read && !flash_wait ) ? 0 : // addr phase
 						   ( flash_valid               ) ? burst_count + 1 : // data (bit) transfer
 																	  burst_count;
-		whold <= ( flash_valid && burst_addr >= 'h800 && !burst_count[0] ) ? flash_data : whold;
+		whold[63:0] <= ( flash_valid && burst_addr >= 'h800 ) ? { whold[62:0], flash_data } : whold[63:0] ;
 	end
 
-	// Flash data ram organized as r1w1 32K words x 2-bit
+	// Flash data ram organized as r1w1 1K words x 64-bit, dual read
 	// it will take 
 	// flash ram written on slow flash clock. 
 	// flash ram read below on an application clock
-	logic [1:0] flash_ram[0:32767];
+	logic [63:0] box_ram1[0:1023];
+	logic [63:0] box_ram2[0:1023];
 	always_ff @(posedge clk_out ) begin
 			if(  flash_valid && burst_addr >= 'h800 && burst_count[0] ) begin
-					flash_ram[{burst_addr[10-:4],burst_count[11-:11]}] <= { whold, flash_data };
+					box_ram1[{burst_addr[10-:4],burst_count[11-:6]}] <= { whold[62:0], flash_data };
+					box_ram2[{burst_addr[10-:4],burst_count[11-:6]}] <= { whold[62:0], flash_data };
 			end
 	end
 	
@@ -287,7 +289,7 @@ assign speaker_n = !speaker;
 					  ( blank && !blank_d1 ) ? ycnt + 1 : ycnt;
 	end
 
-	// Read the rom during two 142x142 windows (128,128) and (384,128)
+	// Read the ram replicating each bit into 8x8 block from during two 256x256 windows (128,128) and (384,128)
 	// and output RGB and asssert a window flag
 	
 	logic active_row, active_row_d;
@@ -298,41 +300,23 @@ assign speaker_n = !speaker;
 	logic [1:0] ram_data;
 	always @(posedge hdmi_clk) begin
 		// get active window
-		active_row  <= ( !blank && ycnt >= 128 && ycnt < 128+142 ) ? 1'b1 : 1'b0;
+		active_row  <= ( !blank && ycnt >= 128 && ycnt < 128+256 ) ? 1'b1 : 1'b0;
 		active_row_d<= active_row;
-		active_left <= ( active_row && !blank && xcnt >= 128 && xcnt < 128+142 ) ? 1'b1 : 1'b0; 
-		active_right<= ( active_row && !blank && xcnt >= 384 && xcnt < 384+142 ) ? 1'b1 : 1'b0;
-		// Ram read address maintenance
-		row_addr <= ( vsync ) ? 0 : ( !active_row && active_row_d ) ? row_addr +'d142 : row_addr;
-		pel_addr <= ( active_left || active_right ) ? pel_addr + 1 : row_addr ;
-		ram_data <= flash_ram[pel_addr];
+		active_left <= ( active_row && !blank && xcnt >= 64 && xcnt < 64+256) ? 1'b1 : 1'b0; 
+		active_right<= ( active_row && !blank && xcnt >= 384 && xcnt < 384+256) ? 1'b1 : 1'b0;
 	end
 	
-	// Instantiate day 7 logic
-	logic [15:0] splits; // Part 1
-	logic [63:0] timelines; // part2
-	logic [1:0] pout;
-	logic ovalid; // pout matched valid
-	aoc_day7 i_day7 (
-		.clk		( hdmi_clk ),
-		.vsync	( vsync ),
-		.valid	( active_right ),
-		.first   ( ycnt == 128 ), 
-		.ovalid  ( ovalid ),
-		.pin     ( ram_data ),
-		.pout    ( pout ),
-		.splits	( splits ),
-		.dimensions( timelines )
-		);
+	// Instantiate day 8 logic
+	// TBD
+
 	
 	// Create display window and RGB
 	logic window;
 	logic [7:0] winr, wing, winb;
-	assign window = ( active_left || ovalid ) ? 1'b1 : 1'b0; // two display windows
-	assign { winr, wing, winb } = (((active_left) ? ram_data : pout ) == 3 ) ? 24'h0000ff : // rgb values 
-	                              (((active_left) ? ram_data : pout ) == 2 ) ? 24'hff0000 : // display ram on left
-	                              (((active_left) ? ram_data : pout ) == 1 ) ? 24'h00ff00 : // display processed on right
-		                                                                        24'h202040 ;
+	assign window = ( active_left || active_right ) ? 1'b1 : 1'b0; // two display windows
+	assign { winr, wing, winb } = {{ ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4] },
+	                               { ycnt[4], xcnt[5], ycnt[6], xcnt[7], ycnt[4], xcnt[5], ycnt[6], xcnt[7] },
+											 { xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5] }};
 	
 	//////////////////////////////// display done //////////////////////////////////
 
@@ -415,12 +399,13 @@ assign speaker_n = !speaker;
 
 	
 	// Overlay Text - Dynamic
+	logic [35:0] candidate = 36'h012345678;
 	logic [10:0] id_str; 
-	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 7" ) );
-	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d40), .out( id_str[1]), .str( "Part 1  0x" ) );
-	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d42), .out( id_str[2]), .str( "Part 2  0x" ) );
-	hex_overlay    #(.LEN(4 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d40), .out( id_str[3]), .in( splits[15:0] ) );
-	hex_overlay    #(.LEN(16)) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d42), .out( id_str[4]), .in( timelines[63:0] ) );
+	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 8" ) );
+	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[1]), .str( "Part 1:   " ) );
+	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[2]), .str( "Part 2::0x" ) );
+	string_overlay #(.LEN(7 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[3]), .str( "Yikes!!" ) );
+	hex_overlay    #(.LEN(9 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[4]), .in( candidate[35:0] ) );
 	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
