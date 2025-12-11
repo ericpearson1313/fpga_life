@@ -312,7 +312,7 @@ assign speaker_n = !speaker;
 	//
 
 	logic [2:0] test_in;
-	always_ff @(posedge clk) begin
+	always_ff @(posedge clk)
 		test_in <= ( reset ) ? 3'b100 : ( short_fire ) ? { test_in[1:0], test_in[2] };
 	assign { out[0], fft_ofs[0], dac_ofs[0] } = test_in | ~iset;
 	
