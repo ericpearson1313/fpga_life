@@ -306,195 +306,48 @@ assign speaker_n = !speaker;
 		active_right<= ( active_row && !blank && xcnt >= 384 && xcnt < 384+256) ? 1'b1 : 1'b0;
 	end
 	
-	// Instantiate day 8 logic
-	// TBD
 	
-	// Day 8 part 2 hardware
-	// Process
-	// init color table 2R1W mem 
-	// (C) Dedicate one color table to raster access during right window window
-	// (S) wait button press
-	// (C) find next shortest path (full search boxs pairs)
-	// Take a r/w pass thru the color table
-	// if box pair sits on the two different colors (2 color table reads) map all higher color to the lower color
-	// and after mapping check if all colors are now == 0 and set done
-	// (S) if not done and long_press loop back for next shorted path pass.
-	// (S) else if not done wait button press and loop back for next shortest pass
-	// (S) if button step back to init color table
-	
-	// Connect to fire button
-	logic vid_short, vid_long, vid_press, vid_but;
-	debounce _vid_but ( .clk( hdmi_clk ), .reset( reset ), .in( fire_button ), .out( vid_short ), .long( vid_long ));
-	always @(posedge hdmi_clk)
-		vid_but <= vid_short;
-	assign vid_press = vid_short & ~vid_but;
+	//
+	// DAY 11
+	//
 
-	// Sequencer 
-	localparam S_IDLE 	= 0; // goto init
-	localparam S_INIT 	= 1; // Write a ramp 0 to 1023 into color table
-	localparam S_BUTTON 	= 2; // wait for a button press
-	localparam S_SEARCH 	= 3; // do the n*n/2 full search for next shortest pair
-	localparam S_LOOKUP1	= 4; // lookup 2colors of the pair
-	localparam S_LOOKUP2	= 5; // lookup 2colors of the pair
-	localparam S_VECMAP 	= 6; // walk thru color table and map the pair and test is its all color==0
-	localparam S_DONE 	= 7; // if not done a long or short button press got0 next full search, else done and button goto idle
-	logic [3:0] state;
+	logic [2:0] test_in;
+	always_ff @(posedge clk) begin
+		test_in <= ( reset ) ? 3'b100 : ( short_fire ) ? { test_in[1:0], test_in[2] };
+	assign { out[0], fft_ofs[0], dac_ofs[0] } = test_in | ~iset;
 	
-	logic init_done;	// 1024 cyels to write a ramp into color table
-	logic search_done; // search next, 100K cycles
-	logic map_done; // remap color tables and check if alldone 1024 cycles
-	logic done; // completed part 2
-	always_ff @(posedge hdmi_clk) begin
-		if( reset ) begin
-			state <= S_IDLE;
-		end else begin
-			case( state ) 
-			S_IDLE 	: begin state <=                                          S_INIT           	  ; end
-			S_INIT 	: begin state <= (  init_done  								) ? S_BUTTON  : S_INIT 	  ; end
-			S_BUTTON : begin state <= (  vid_long || vid_press  				) ? S_SEARCH  : S_BUTTON  ; end
-			S_SEARCH : begin state <= (  search_done                       ) ? S_LOOKUP1 : S_SEARCH  ; end
-			S_LOOKUP1: begin state <=                                          S_LOOKUP2             ; end
-			S_LOOKUP2: begin state <=                                          S_VECMAP              ; end
-			S_VECMAP : begin state <= (  map_done                          ) ? S_DONE    : S_VECMAP  ; end
-			S_DONE 	: begin state <= ( !done && ( vid_long || vid_press ) ) ? S_SEARCH  : 
-			                          (  done               && vid_press   ) ? S_INIT    : S_DONE    ; end
-			default  : begin state <= 4'bxxxx; end
-			endcase
-		end
-	end
+	// DUT Connections
+	logic [11:0] svr, you, out, fft, dac, fft_ofs, dac_ofs;
+	// Instantiate day 10 synthesizable verilog 
+	aoc_day11 i_day11 (
+		.clk	( clk ),
+		.reset	( reset ),
+		// circuit inputs
+		.out    ( out ),
+		.fft_ofs( fft_ofs ),
+		.dac_ofs( dac_ofs ),
+		// Circuit outputs
+		.svr    ( svr ),
+		.you    ( you ),
+		.fft    ( fft ),
+		.dac    ( dac )
+	);
 
-	// Video copy of Color table (always read to screen at raster rate) displayed live (during 40? sec solve) on right window
-	// Index by raster position (an 8x8 cell location per box) and then generate the box RGB based on the indexed color.
-	logic [9:0]  ctable [0:1023];
-	logic [9:0] vctable [0:1023];
-	logic [9:0] vcolor;
-	logic [9:0] vidx;
-	logic [7:0] vxcnt, vycnt;
-	assign vxcnt = xcnt-384;
-	assign vycnt = ycnt-128;
-	assign vidx[9:0] = { vycnt[7-:5],vxcnt[7-:5] }; // index color tabel by screen location
-	always_ff @(posedge hdmi_clk)
-		vcolor <= vctable[ vidx ];
-	logic [7:3] xcolor, ycolor;
-	assign { ycolor, xcolor } = vcolor;
-		
-	logic [7:0] colr, colg, colb; // rgb
-	assign { colr, colg, colb } = { { ycolor[3], xcolor[4], ycolor[6], ycolor[3], xcolor[4], ycolor[6], ycolor[3], xcolor[4] },
-	                               ~{ ycolor[4], xcolor[5], ycolor[6], xcolor[7], ycolor[4], xcolor[5], ycolor[6], xcolor[7] },
-										     { xcolor[3], ycolor[5], xcolor[7], xcolor[3], ycolor[5], xcolor[7], xcolor[3], ycolor[5] } };
-	
-	// Create left reference display window and RGB
-	logic window;
-	logic [7:0] winr, wing, winb;
-	assign window = ( active_left || active_right ) ? 1'b1 : 1'b0; // two display windows
-	assign { winr, wing, winb } = { { ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4] },
-	                               ~{ ycnt[4], xcnt[5], ycnt[6], xcnt[7], ycnt[4], xcnt[5], ycnt[6], xcnt[7] },
-											  { xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5] } };						
-											
-	// full pair search
-		logic [63:0] thresh; // min cost threshold
-		logic [63:0] distance; // pair cost^2
-		logic [63:0] cost; // best cost so far
-		logic [63:0] last_candidate; // reported puzzle sum, when we finish!
-		
-			logic [9:0] best_a, best_b;
-			logic [9:0] a_count, b_count; 
-			logic [4:0][9:0] a_count_del, b_count_del; 
-			logic [17:0] dx, dy, dz;
-			logic [35:0] dx2, dy2, dz2;
-		   logic [63:0] box1, box2;
-			logic search_run;
-			logic [5:0] search_run_d;
-			assign search_run = ( state == S_SEARCH ) ? 1'b1 : 1'b0;
-			assign search_done = ( a_count == 998 && b_count == 999 ) ? 1'b1 : 1'b0;
-			always_ff @(posedge hdmi_clk) begin
-			if( reset ) begin
-				a_count <= 0; // lead couner
-				b_count <= 1; // upper counter
-			end else begin
-				search_run_d[5:0] <= { search_run_d[4:0], search_run };
-				a_count <= ( search_run && search_done    ) ? 0 : 
-				           ( search_run && b_count == 999 ) ? a_count + 1 :
-							                                     a_count;
-				b_count <= ( search_run && search_done    ) ? 1 :
-				           ( search_run && b_count == 998 ) ? a_count + 2 :
-							                                     b_count;
-				a_count_del[4:0] <= { a_count_del[3:0], a_count };
-				b_count_del[4:0] <= { b_count_del[3:0], b_count };
-				// Coord memory reads
-				box1 <= box_ram1[a_count];
-				box2 <= box_ram2[b_count];
-				
-				// Calc x,y,z differenced
-				dx <= ( box1[53-:18] > box2[53-:18] ) ? ( box1[53-:18] - box2[53-:18] ) : ( box2[53-:18] - box1[53-:18] );
-				dy <= ( box1[35-:18] > box2[35-:18] ) ? ( box1[35-:18] - box2[35-:18] ) : ( box2[35-:18] - box1[35-:18] );
-				dz <= ( box1[17-:18] > box2[17-:18] ) ? ( box1[17-:18] - box2[17-:18] ) : ( box2[17-:18] - box1[17-:18] );
-				
-				// Calculate squared valued
-				dx2 <= dx * dx;
-				dy2 <= dy * dy;
-				dz2 <= dz * dz;
-				
-				// Calculate pair distance
-				distance <= dx2 + dy2 + dz2;
-				
-				// Update best
-				cost <= ( !search_run ) ? (10000*10000)*3 : 
-				        ( search_run && distance > thresh && distance < cost ) ? distance : cost;
-				best_a <= ( search_run && distance > thresh && distance < cost ) ? a_count_del[4] : best_a;
-				best_b <= ( search_run && distance > thresh && distance < cost ) ? b_count_del[4] : best_b;
-				
-				// update thresh when done
-				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[5] && !search_run_d[4] ) ? cost : thresh;  
-			end
-		end
-	
-	// Color Mapping functdion
-	// need to latch colors for best_a, best_b from next search
-	// determine min_color, max_color
-	// Determine mapped = ( read_color == MAX_COLOR ) ? min_color : read_color
-	logic [9:0] a_color, b_color;
-	logic [9:0] min_color, max_color; 
-	logic [9:0] mapped;
-	always_ff @(posedge hdmi_clk) begin
-		a_color <= ( state == S_LOOKUP1 ) ? read_color : a_color;
-		b_color <= ( state == S_LOOKUP2 ) ? read_color : b_color;
-	end
-	assign min_color = ( a_color < b_color ) ? a_color : b_color;
-	assign max_color = ( a_color < b_color ) ? b_color : a_color;
-	assign mapped = ( read_color == max_color ) ? min_color : read_color;
-	
-	
-				
-		// Color table operations, write to both banks, but only read 1
-		// lookup 2 (two) colors for best_a and best_b and get min/max during S_LOOKUP1/2
-		// walk and init color table during S_INIT
-		// walk, map, test color table during S_VECMAP
-	// Color table burst writes (init, map&test) A
-	logic [9:0] ctable_addr;
-	logic [9:0] ctable_waddr;
-	logic [9:0] c_count;
-	logic [9:0] read_color;
-	
-	
+	    // Display on HDMI screen
+    logic [39:0] aoc_ov;
+        string_overlay #(.LEN( 12 )) i_aoc0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 45 ), .y( 22 ), .out( aoc_ov[0] ), .str( "Day 11 Path sums" ) );
+        bin_overlay    #(.LEN( 3  )) i_aoc1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char)    , .x( 45 ), .y( 24 ), .out( aoc_ov[1] ), .in( { out[0], fft_ofs[0], dac_ofs[0] } ) );
+        hex_overlay    #(.LEN( 3 )) i_aoc2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 26 ), .out( aoc_ov[2] ), .in( svr ) );
+        hex_overlay    #(.LEN( 3 )) i_aoc3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 28 ), .out( aoc_ov[3] ), .in( you ) );
+        hex_overlay    #(.LEN( 3 )) i_aoc4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 30 ), .out( aoc_ov[4] ), .in( fft ) );
+        hex_overlay    #(.LEN( 3 )) i_aoc5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 32 ), .out( aoc_ov[5] ), .in( dac ) );
 
-	always_ff @(posedge hdmi_clk) begin
-		c_count <= ( state == S_IDLE  || state == S_LOOKUP2 ) ? 0 :
-					  ( state == S_INIT  || state == S_VECMAP  ) ? c_count + 1 : c_count ;
-		ctable_addr <= ( state == S_LOOKUP1 ) ? best_a :
-		               ( state == S_LOOKUP2 ) ? best_b : c_count ;
-		ctable_waddr <= ctable_addr;
-		read_color <= ctable[ ctable_addr ];
-		if( state == S_INIT || state == S_VECMAP ) begin
-			ctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
-		  vctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
-		end	
-	end
-			                                                                        //
-	//                                                                            //
-	////////////////////////////////////////////////////////////////////////////////
-	//////////////////////////////// AoC Day 8 done ////////////////////////////////
-	////////////////////////////////////////////////////////////////////////////////
+        string_overlay #(.LEN( 11 )) i_aoc6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 30 ), .y( 24 ), .out( aoc_ov[6] ), .str( "out/fft/dac" ) );
+        string_overlay #(.LEN( 3  )) i_aoc7(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 40 ), .y( 26 ), .out( aoc_ov[7] ), .str( "SVR" ) );
+        string_overlay #(.LEN( 3  )) i_aoc8(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 40 ), .y( 28 ), .out( aoc_ov[8] ), .str( "YOU" ) );
+        string_overlay #(.LEN( 3  )) i_aoc9(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 40 ), .y( 30 ), .out( aoc_ov[9] ), .str( "FFT" ) );
+        string_overlay #(.LEN( 3  )) i_aoca(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 40 ), .y( 32 ), .out( aoc_ov[10]), .str( "DAC" ) );
+
 
 	// Font Generator
 	logic [7:0] char_x, char_y;
@@ -577,15 +430,15 @@ assign speaker_n = !speaker;
 	// Overlay Text - Dynamic
 	logic [35:0] candidate = 36'h012345678;
 	logic [10:0] id_str; 
-	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 8" ) );
-	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[1]), .str( "Part 1:   " ) );
-	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[2]), .str( "Part 2::0x" ) );
-	string_overlay #(.LEN(7 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[3]), .str( "Yikes!!" ) );
-	hex_overlay    #(.LEN(9 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[4]), .in( candidate[35:0] ) );
+	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 11" ) );
+	//string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[1]), .str( "Part 1:   " ) );
+	//string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[2]), .str( "Part 2::0x" ) );
+	//string_overlay #(.LEN(7 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[3]), .str( "Yikes!!" ) );
+	//hex_overlay    #(.LEN(9 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[4]), .in( candidate[35:0] ) );
 	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
-						  (|id_str  ) ; // reduction OR of the id string bits.
+						  (|id_str  ) | (|aoc_ov ) ; // reduction OR of the id string bits.
 	
 	// Overlay Color
 	logic [7:0] overlay_red, overlay_green, overlay_blue;
