@@ -323,11 +323,11 @@ assign speaker_n = !speaker;
 	// (S) if button step back to init color table
 	
 	// Connect to fire button
-	logic vid_short, vid_long, vid_press;
+	logic vid_short, vid_long, vid_press, vid_but;
 	debounce _vid_but ( .clk( hdmi_clk ), .reset( reset ), .in( fire_button ), .out( vid_short ), .long( vid_long ));
 	always @(posedge hdmi_clk)
 		vid_but <= vid_short;
-	assign vid_press = vid_short & ~~vid_but;
+	assign vid_press = vid_short & ~vid_but;
 
 	// Sequencer 
 	localparam S_IDLE 	= 0; // goto init
@@ -351,14 +351,14 @@ assign speaker_n = !speaker;
 			case( state ) 
 			S_IDLE 	: begin state <=                                          S_INIT           	  ; end
 			S_INIT 	: begin state <= (  init_done  								) ? S_BUTTON  : S_INIT 	  ; end
-			S_BUTTON : begin state <= (  vid_long || vide_press  				) ? S_SEARCH  : S_BUTTON  ; end
+			S_BUTTON : begin state <= (  vid_long || vid_press  				) ? S_SEARCH  : S_BUTTON  ; end
 			S_SEARCH : begin state <= (  search_done                       ) ? S_LOOKUP1 : S_SEARCH  ; end
 			S_LOOKUP1: begin state <=                                          S_LOOKUP2             ; end
 			S_LOOKUP2: begin state <=                                          S_VECMAP              ; end
 			S_VECMAP : begin state <= (  map_done                          ) ? S_DONE    : S_VECMAP  ; end
-			S_DONE 	: begin state <= ( !done && ( vid_long || vid_press   ) ? S_SEARCH  : 
+			S_DONE 	: begin state <= ( !done && ( vid_long || vid_press ) ) ? S_SEARCH  : 
 			                          (  done               && vid_press   ) ? S_INIT    : S_DONE    ; end
-			default  : begin state <= 4'bxxxx;
+			default  : begin state <= 4'bxxxx; end
 			endcase
 		end
 	end
@@ -368,11 +368,11 @@ assign speaker_n = !speaker;
 	logic [9:0]  ctable [0:1023];
 	logic [9:0] vctable [0:1023];
 	logic [9:0] vcolor;
-	logic [9:0[ vidx;
+	logic [9:0] vidx;
 	logic [7:0] vxcnt, vycnt;
 	assign vxcnt = xcnt-384;
 	assign vycnt = ycnt-128;
-	assign vidx[9:0] = { vycnt[7:-5],vxcnt[7-:5] }; // index color tabel by screen location
+	assign vidx[9:0] = { vycnt[7-:5],vxcnt[7-:5] }; // index color tabel by screen location
 	always_ff @(posedge hdmi_clk)
 		vcolor <= vctable[ vidx ];
 	logic [7:3] xcolor, ycolor;
@@ -397,30 +397,38 @@ assign speaker_n = !speaker;
 		logic [63:0] cost; // best cost so far
 		logic [63:0] last_candidate; // reported puzzle sum, when we finish!
 		
-			logic [9:0] a_count, bcount; 
+			logic [9:0] best_a, best_b;
+			logic [9:0] a_count, b_count; 
+			logic [4:0][9:0] a_count_del, b_count_del; 
+			logic [17:0] dx, dy, dz;
+			logic [35:0] dx2, dy2, dz2;
+		   logic [63:0] box1, box2;
 			logic search_run;
+			logic [5:0] search_run_d;
 			assign search_run = ( state == S_SEARCH ) ? 1'b1 : 1'b0;
 			assign search_done = ( a_count == 998 && b_count == 999 ) ? 1'b1 : 1'b0;
 			always_ff @(posedge hdmi_clk) begin
 			if( reset ) begin
 				a_count <= 0; // lead couner
 				b_count <= 1; // upper counter
-				search_done <= 0;
 			end else begin
+				search_run_d[5:0] <= { search_run_d[4:0], search_run };
 				a_count <= ( search_run && search_done    ) ? 0 : 
 				           ( search_run && b_count == 999 ) ? a_count + 1 :
 							                                     a_count;
 				b_count <= ( search_run && search_done    ) ? 1 :
 				           ( search_run && b_count == 998 ) ? a_count + 2 :
-							                                     b_count:
+							                                     b_count;
+				a_count_del[4:0] <= { a_count_del[3:0], a_count };
+				b_count_del[4:0] <= { b_count_del[3:0], b_count };
 				// Coord memory reads
 				box1 <= box_ram1[a_count];
 				box2 <= box_ram2[b_count];
 				
 				// Calc x,y,z differenced
-				dx <= ( box1[53-:18] > box2[53:18] ) ? ( box1[53-:18] - box2[53:18] ) : ( box2[53-:18] - box1[53:18] );
-				dy <= ( box1[35-:18] > box2[35:18] ) ? ( box1[35-:18] - box2[35:18] ) : ( box2[35-:18] - box1[35:18] );
-				dz <= ( box1[17-:18] > box2[17:18] ) ? ( box1[17-:18] - box2[17:18] ) : ( box2[17-:18] - box1[17:18] );
+				dx <= ( box1[53-:18] > box2[53-:18] ) ? ( box1[53-:18] - box2[53-:18] ) : ( box2[53-:18] - box1[53-:18] );
+				dy <= ( box1[35-:18] > box2[35-:18] ) ? ( box1[35-:18] - box2[35-:18] ) : ( box2[35-:18] - box1[35-:18] );
+				dz <= ( box1[17-:18] > box2[17-:18] ) ? ( box1[17-:18] - box2[17-:18] ) : ( box2[17-:18] - box1[17-:18] );
 				
 				// Calculate squared valued
 				dx2 <= dx * dx;
@@ -437,10 +445,26 @@ assign speaker_n = !speaker;
 				best_b <= ( search_run && distance > thresh && distance < cost ) ? b_count_del[4] : best_b;
 				
 				// update thresh when done
-				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[5] && !search_run_d[4] ) ? cost;  
+				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[5] && !search_run_d[4] ) ? cost : thresh;  
 			end
 		end
-				
+	
+	// Color Mapping functdion
+	// need to latch colors for best_a, best_b from next search
+	// determine min_color, max_color
+	// Determine mapped = ( read_color == MAX_COLOR ) ? min_color : read_color
+	logic [9:0] a_color, b_color;
+	logic [9:0] min_color, max_color; 
+	logic [9:0] mapped;
+	always_ff @(posedge hdmi_clk) begin
+		a_color <= ( state == S_LOOKUP1 ) ? read_color : a_color;
+		b_color <= ( state == S_LOOKUP2 ) ? read_color : b_color;
+	end
+	assign min_color = ( a_color < b_color ) ? a_color : b_color;
+	assign max_color = ( a_color < b_color ) ? b_color : a_color;
+	assign mapped = ( read_color == max_color ) ? min_color : read_color;
+	
+	
 				
 		// Color table operations, write to both banks, but only read 1
 		// lookup 2 (two) colors for best_a and best_b and get min/max during S_LOOKUP1/2
@@ -448,16 +472,22 @@ assign speaker_n = !speaker;
 		// walk, map, test color table during S_VECMAP
 	// Color table burst writes (init, map&test) A
 	logic [9:0] ctable_addr;
+	logic [9:0] ctable_waddr;
+	logic [9:0] c_count;
+	logic [9:0] read_color;
+	
+	
 
 	always_ff @(posedge hdmi_clk) begin
 		c_count <= ( state == S_IDLE  || state == S_LOOKUP2 ) ? 0 :
-					  ( state == S_INIT  || state == S_VECMAP  ) ? c_count + 1 : c_count
+					  ( state == S_INIT  || state == S_VECMAP  ) ? c_count + 1 : c_count ;
 		ctable_addr <= ( state == S_LOOKUP1 ) ? best_a :
 		               ( state == S_LOOKUP2 ) ? best_b : c_count ;
-		read_color <= ctable[ ctable_addr ];A
+		ctable_waddr <= ctable_addr;
+		read_color <= ctable[ ctable_addr ];
 		if( state == S_INIT || state == S_VECMAP ) begin
 			ctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
-		  Vctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
+		  vctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
 		end	
 	end
 			                                                                        //
