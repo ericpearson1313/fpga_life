@@ -317,7 +317,7 @@ assign speaker_n = !speaker;
 	assign { out[0], fft_ofs[0], dac_ofs[0] } = test_in | ~iset;
 	
 	// DUT Connections
-	logic [11:0] svr, you, out, fft, dac, fft_ofs, dac_ofs;
+	logic [21:0] svr, you, out, fft, dac, fft_ofs, dac_ofs;
 	// Instantiate day 10 synthesizable verilog 
 	aoc_day11 i_day11 (
 		.clk	( clk ),
@@ -335,12 +335,12 @@ assign speaker_n = !speaker;
 
 	    // Display on HDMI screen
     logic [39:0] aoc_ov;
-        string_overlay #(.LEN( 12 )) i_aoc0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 45 ), .y( 22 ), .out( aoc_ov[0] ), .str( "Day 11 Path sums" ) );
+        string_overlay #(.LEN( 16 )) i_aoc0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 45 ), .y( 22 ), .out( aoc_ov[0] ), .str( "Day 11 Path sums" ) );
         bin_overlay    #(.LEN( 3  )) i_aoc1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.bin_char(bin_char)    , .x( 45 ), .y( 24 ), .out( aoc_ov[1] ), .in( { out[0], fft_ofs[0], dac_ofs[0] } ) );
-        hex_overlay    #(.LEN( 3 )) i_aoc2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 26 ), .out( aoc_ov[2] ), .in( svr ) );
-        hex_overlay    #(.LEN( 3 )) i_aoc3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 28 ), .out( aoc_ov[3] ), .in( you ) );
-        hex_overlay    #(.LEN( 3 )) i_aoc4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 30 ), .out( aoc_ov[4] ), .in( fft ) );
-        hex_overlay    #(.LEN( 3 )) i_aoc5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 32 ), .out( aoc_ov[5] ), .in( dac ) );
+        hex_overlay    #(.LEN( 6 )) i_aoc2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 26 ), .out( aoc_ov[2] ), .in( svr ) );
+        hex_overlay    #(.LEN( 6 )) i_aoc3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 28 ), .out( aoc_ov[3] ), .in( you ) );
+        hex_overlay    #(.LEN( 6 )) i_aoc4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 30 ), .out( aoc_ov[4] ), .in( fft ) );
+        hex_overlay    #(.LEN( 6 )) i_aoc5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char)    , .x( 45 ), .y( 32 ), .out( aoc_ov[5] ), .in( dac ) );
 
         string_overlay #(.LEN( 11 )) i_aoc6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 30 ), .y( 24 ), .out( aoc_ov[6] ), .str( "out/fft/dac" ) );
         string_overlay #(.LEN( 3  )) i_aoc7(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x( 40 ), .y( 26 ), .out( aoc_ov[7] ), .str( "SVR" ) );
