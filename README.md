@@ -1,3 +1,13 @@
+# AOC Day 11 Part 2
+
+Update: extended the datapath from 12 to 22 bits, and confirmed the circuit fits in the fpga and both Part 1 and 2 are correclty calculated.
+
+    Time to calulate part 1 increased to 182.4ns.
+    Time to calculate part 2 is 547ns (3 cycles).
+    The area increased from 6771 LE (lut4) to 12554 LE.
+
+It would be interesting to compare timing and LE usage between the Altera MAX10 with Lut4's vs the XIlinx Artix-7 with Lut5's.
+
 # AOC Day 11 Part 1 
 
 Implemented in a MAX10 fpga. Solution time in 164.2ns. This example showcases the fpgas, parallel computation, low latency and re-configuability.
