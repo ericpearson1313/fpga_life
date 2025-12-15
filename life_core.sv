@@ -303,7 +303,7 @@ assign speaker_n = !speaker;
 		active_row  <= ( !blank && ycnt >= 128 && ycnt < 128+256 ) ? 1'b1 : 1'b0;
 		active_row_d<= active_row;
 		active_left <= ( active_row && !blank && xcnt >= 64 && xcnt < 64+256) ? 1'b1 : 1'b0; 
-		active_right<= ( active_row && !blank && xcnt >= 384 && xcnt < 384+256) ? 1'b1 : 1'b0;
+		active_right<= ( active_row && !blank && xcnt >= 384+1 && xcnt < 384+256+1) ? 1'b1 : 1'b0; // delay 1 cycle due to color table ram
 	end
 	
 	// Instantiate day 8 logic
@@ -324,7 +324,7 @@ assign speaker_n = !speaker;
 	
 	// Connect to fire button
 	logic vid_short, vid_long, vid_press, vid_but;
-	debounce _vid_but ( .clk( hdmi_clk ), .reset( reset ), .in( fire_button ), .out( vid_short ), .long( vid_long ));
+	debounce _vid_but ( .clk( hdmi_clk ), .reset( hdmi_reset ), .in( fire_button ), .out( vid_short ), .long( vid_long ));
 	always @(posedge hdmi_clk)
 		vid_but <= vid_short;
 	assign vid_press = vid_short & ~vid_but;
@@ -345,7 +345,7 @@ assign speaker_n = !speaker;
 	logic map_done; // remap color tables and check if alldone 1024 cycles
 	logic done; // completed part 2
 	always_ff @(posedge hdmi_clk) begin
-		if( reset ) begin
+		if( hdmi_reset ) begin
 			state <= S_IDLE;
 		end else begin
 			case( state ) 
@@ -362,6 +362,12 @@ assign speaker_n = !speaker;
 			endcase
 		end
 	end
+	
+	// Count number of strings of lights
+	logic [15:0] scount;
+	always_ff @(posedge hdmi_clk)
+		scount <= ( state == S_INIT ) ? 0 : ( state == S_BUTTON && ( vid_long || vid_press ) ) ? scount + 1 : scount;
+	
 
 	// Video copy of Color table (always read to screen at raster rate) displayed live (during 40? sec solve) on right window
 	// Index by raster position (an 8x8 cell location per box) and then generate the box RGB based on the indexed color.
@@ -369,7 +375,7 @@ assign speaker_n = !speaker;
 	logic [9:0] vctable [0:1023];
 	logic [9:0] vcolor;
 	logic [9:0] vidx;
-	logic [7:0] vxcnt, vycnt;
+	logic [9:0] vxcnt, vycnt;
 	assign vxcnt = xcnt-384;
 	assign vycnt = ycnt-128;
 	assign vidx[9:0] = { vycnt[7-:5],vxcnt[7-:5] }; // index color tabel by screen location
@@ -379,17 +385,19 @@ assign speaker_n = !speaker;
 	assign { ycolor, xcolor } = vcolor;
 		
 	logic [7:0] colr, colg, colb; // rgb
-	assign { colr, colg, colb } = { { ycolor[3], xcolor[4], ycolor[6], ycolor[3], xcolor[4], ycolor[6], ycolor[3], xcolor[4] },
-	                               ~{ ycolor[4], xcolor[5], ycolor[6], xcolor[7], ycolor[4], xcolor[5], ycolor[6], xcolor[7] },
-										     { xcolor[3], ycolor[5], xcolor[7], xcolor[3], ycolor[5], xcolor[7], xcolor[3], ycolor[5] } };
+	assign { colr, colg, colb } = { { xcolor[3], ycolor[4], xcolor[6], ycolor[7], xcolor[4], ycolor[5], xcolor[7], ycolor[3] },
+	                               ~{ ycolor[3], xcolor[5], ycolor[6], xcolor[3], ycolor[4], xcolor[6], ycolor[7], xcolor[4] },
+										     { xcolor[4], ycolor[5], xcolor[7], ycolor[3], xcolor[5], ycolor[6], xcolor[3], ycolor[4] } };
 	
 	// Create left reference display window and RGB
 	logic window;
+	logic [9:0] wxcnt, wycnt;
+	assign wxcnt = xcnt-384;
+	assign wycnt = ycnt-128;
 	logic [7:0] winr, wing, winb;
-	assign window = ( active_left || active_right ) ? 1'b1 : 1'b0; // two display windows
-	assign { winr, wing, winb } = { { ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4], ycnt[6], ycnt[3], xcnt[4] },
-	                               ~{ ycnt[4], xcnt[5], ycnt[6], xcnt[7], ycnt[4], xcnt[5], ycnt[6], xcnt[7] },
-											  { xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5], xcnt[7], xcnt[3], ycnt[5] } };						
+	assign { winr, wing, winb } = { { wxcnt[3], wycnt[4], wxcnt[6], wycnt[7], wxcnt[4], wycnt[5], wxcnt[7], wycnt[3] },
+	                               ~{ wycnt[3], wxcnt[5], wycnt[6], wxcnt[3], wycnt[4], wxcnt[6], wycnt[7], wxcnt[4] }, 
+											  { wxcnt[4], wycnt[5], wxcnt[7], wycnt[3], wxcnt[5], wycnt[6], wxcnt[3], wycnt[4] } };						
 											
 	// full pair search
 		logic [63:0] thresh; // min cost threshold
@@ -408,7 +416,7 @@ assign speaker_n = !speaker;
 			assign search_run = ( state == S_SEARCH ) ? 1'b1 : 1'b0;
 			assign search_done = ( a_count == 998 && b_count == 999 ) ? 1'b1 : 1'b0;
 			always_ff @(posedge hdmi_clk) begin
-			if( reset ) begin
+			if( hdmi_reset ) begin
 				a_count <= 0; // lead couner
 				b_count <= 1; // upper counter
 			end else begin
@@ -417,7 +425,8 @@ assign speaker_n = !speaker;
 				           ( search_run && b_count == 999 ) ? a_count + 1 :
 							                                     a_count;
 				b_count <= ( search_run && search_done    ) ? 1 :
-				           ( search_run && b_count == 998 ) ? a_count + 2 :
+				           ( search_run && b_count == 999 ) ? a_count + 2 :
+							  ( search_run                   ) ? b_count + 1 :
 							                                     b_count;
 				a_count_del[4:0] <= { a_count_del[3:0], a_count };
 				b_count_del[4:0] <= { b_count_del[3:0], b_count };
@@ -490,6 +499,8 @@ assign speaker_n = !speaker;
 		  vctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
 		end	
 	end
+	assign init_done = ( state == S_INIT   && c_count == 10'h3ff ) ? 1'b1 : 1'b0;
+	assign map_done  = ( state == S_VECMAP && c_count == 10'h3ff ) ? 1'b1 : 1'b0;
 			                                                                        //
 	//                                                                            //
 	////////////////////////////////////////////////////////////////////////////////
@@ -578,10 +589,12 @@ assign speaker_n = !speaker;
 	logic [35:0] candidate = 36'h012345678;
 	logic [10:0] id_str; 
 	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 8" ) );
-	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[1]), .str( "Part 1:   " ) );
-	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[2]), .str( "Part 2::0x" ) );
-	string_overlay #(.LEN(7 )) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[3]), .str( "Yikes!!" ) );
-	hex_overlay    #(.LEN(9 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[4]), .in( candidate[35:0] ) );
+	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d48), .out( id_str[1]), .str( "Strings:0x" ) );
+	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[2]), .str( " Part 1:  " ) );
+	string_overlay #(.LEN(10)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[3]), .str( " Part 2:0x" ) );
+	string_overlay #(.LEN(7 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[4]), .str( "Yikes!!" ) );
+	hex_overlay    #(.LEN(9 )) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[5]), .in( candidate[35:0] ) );
+	hex_overlay    #(.LEN(4 )) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d48), .out( id_str[6]), .in( scount ) );
 	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
@@ -626,9 +639,9 @@ assign speaker_n = !speaker;
 		// YUV mode input
 		.yuv_mode		( 0 ), // use YUV2 mode, cheap USb capture devices provice lossless YUV2 capture mode 
 		// RBG Data
-		.red   ( ( window ) ? winr : ( test_red   | overlay_red   )  ),
-		.green ( ( window ) ? wing : ( test_green | overlay_green )  ),
-		.blue  ( ( window ) ? winb : ( test_blue  | overlay_blue  )  ),
+		.red   ( ( active_left ) ? winr : ( active_right ) ? colr : ( test_red   | overlay_red   )  ),
+		.green ( ( active_left ) ? wing : ( active_right ) ? colg : ( test_green | overlay_green )  ),
+		.blue  ( ( active_left ) ? winb : ( active_right ) ? colb : ( test_blue  | overlay_blue  )  ),
 		// HDMI and DVI encoded video
 		.hdmi_data( hdmi2_data ),
 		.dvi_data( dvi_data )
