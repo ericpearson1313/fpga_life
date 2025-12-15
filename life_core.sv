@@ -466,28 +466,26 @@ assign speaker_n = !speaker;
 				dx <= ( box1[53-:18] > box2[53-:18] ) ? ( box1[53-:18] - box2[53-:18] ) : ( box2[53-:18] - box1[53-:18] );
 				dy <= ( box1[35-:18] > box2[35-:18] ) ? ( box1[35-:18] - box2[35-:18] ) : ( box2[35-:18] - box1[35-:18] );
 				dz <= ( box1[17-:18] > box2[17-:18] ) ? ( box1[17-:18] - box2[17-:18] ) : ( box2[17-:18] - box1[17-:18] );
-				
+				xprod[0] <= box1[53-:18] * box2[53-:18]; // and prod of X coords				
 				// Calculate squared valued
 				dx2 <= dx * dx;
 				dy2 <= dy * dy;
 				dz2 <= dz * dz;
+				xprod[1] <= xprod[0];
 				
 				// Calculate pair distance
 				distance <= dx2 + dy2 + dz2;
+				xprod[2] <= xprod[1];
 				
 				// Update best
-				cost <= ( search_run_d[0] && !search_run_d[1] ) ? (100000*100000)*3 : // Init cost at start of search
-				        ( search_run_d[3] && distance > thresh && distance < cost ) ? distance : cost;
-				best_a <= ( search_run_d[3] && distance > thresh && distance < cost ) ? a_count_del[3] : best_a;
-				best_b <= ( search_run_d[3] && distance > thresh && distance < cost ) ? b_count_del[3] : best_b;
+				cost     <= ( search_run_d[0] && !search_run_d[1] ) ? (100000*100000)*3 : // Init cost at start of search
+				            ( search_run_d[3] && distance > thresh && distance < cost ) ? distance       : cost;
+				best_a   <= ( search_run_d[3] && distance > thresh && distance < cost ) ? a_count_del[3] : best_a;
+				best_b   <= ( search_run_d[3] && distance > thresh && distance < cost ) ? b_count_del[3] : best_b;
+				candidate<= ( search_run_d[3] && distance > thresh && distance < cost ) ? xprod[2]       : candidate;
 				
 				// update thresh when done
 				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[4] && !search_run_d[3] ) ? cost : thresh;  
-				
-				// Last Candiate is product of x coordinates
-				xprod[0] <= box1[53-:18] * box2[53-:18];
-				xprod[2:1] <= xprod[1:0];
-				candidate <= ( search_run_d[3] && distance > thresh && distance < cost ) ? xprod[2] : candidate;
 			end
 		end
 	
@@ -535,10 +533,10 @@ assign speaker_n = !speaker;
 	
 	
 	// Monitor for done
-	logic non_zero_flag;
+	logic [11:0] non_zero_count;
 	always_ff @(posedge hdmi_clk) begin
-		non_zero_flag <= ( c_active[0] && !c_active[1] ) ? 0 : ( c_active[1] && mapped != 10'd0) ? 1 : non_zero_flag;
-		done <= ( state == S_INIT ) ? 0 : ( state == S_WAIT3 && !non_zero_flag ) ? 1 : done;
+		non_zero_count <= ( c_active[0] && !c_active[1] ) ? 0 : ( c_active[1] && (mapped != 0) ) ? non_zero_count + 1 : non_zero_count;
+		done <= ( state == S_INIT ) ? 0 : ( state == S_WAIT3 && non_zero_count <= 1 ) ? 1 : done; // hack
 	end
 			                                                                        //
 	//                                                                            //
@@ -647,6 +645,7 @@ assign speaker_n = !speaker;
 	hex_overlay    #(.LEN(16)) _idi(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d55), .out( id_str[18]), .in( thresh ) );
 
 	hex_overlay    #(.LEN(1 )) _idj(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d54), .out( id_str[19]), .in( {2'b00, done, non_zero_flag} ) );
+	hex_overlay    #(.LEN(3 )) _idk(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d55), .out( id_str[20]), .in( non_zero_count ));
 	
 	
 	logic overlay; // default overlay layer bit
