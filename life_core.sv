@@ -332,13 +332,27 @@ assign speaker_n = !speaker;
 	// Sequencer 
 	localparam S_IDLE 	= 0; // goto init
 	localparam S_INIT 	= 1; // Write a ramp 0 to 1023 into color table
-	localparam S_BUTTON 	= 2; // wait for a button press
-	localparam S_SEARCH 	= 3; // do the n*n/2 full search for next shortest pair
-	localparam S_LOOKUP1	= 4; // lookup 2colors of the pair
-	localparam S_LOOKUP2	= 5; // lookup 2colors of the pair
-	localparam S_VECMAP 	= 6; // walk thru color table and map the pair and test is its all color==0
-	localparam S_DONE 	= 7; // if not done a long or short button press got0 next full search, else done and button goto idle
-	logic [3:0] state;
+	localparam S_HOLD1	= 2;
+	localparam S_HOLD2	= 3;
+	localparam S_BUTTON 	= 4; // wait for a button press
+	localparam S_SEARCH 	= 5; // do the n*n/2 full search for next shortest pair
+	localparam S_LOOKUP1	= 6; // lookup 2colors of the pair
+	localparam S_LOOKUP2	= 7; // lookup 2colors of the pair
+	localparam S_LOOKUP3	= 8; // lookup 2colors of the pair
+	localparam S_LOOKUP4	= 9; // lookup 2colors of the pair
+	localparam S_VECMAP 	= 10; // walk thru color table and map the pair and test is its all color==0
+	localparam S_WAIT1	= 11;
+	localparam S_WAIT2	= 12;
+	localparam S_WAIT3	= 13;
+	localparam S_WAIT4	= 14;
+	localparam S_DONE 	= 15; // if not done a long or short button press got0 next full search, else done and button goto idle
+	localparam S_PROP1	= 16;
+	localparam S_PROP2	= 17;
+	localparam S_PROP3	= 18;
+	localparam S_PROP4	= 19;
+	localparam S_PROP5	= 20;
+	
+	logic [4:0] state;
 	
 	logic init_done;	// 1024 cyels to write a ramp into color table
 	logic search_done; // search next, 100K cycles
@@ -350,12 +364,25 @@ assign speaker_n = !speaker;
 		end else begin
 			case( state ) 
 			S_IDLE 	: begin state <=                                          S_INIT           	  ; end
-			S_INIT 	: begin state <= (  init_done  								) ? S_BUTTON  : S_INIT 	  ; end
+			S_INIT 	: begin state <= (  init_done  								) ? S_HOLD1  : S_INIT 	  ; end
+			S_HOLD1  : begin state <=                                          S_HOLD2               ; end
+			S_HOLD2  : begin state <=                                          S_BUTTON              ; end
 			S_BUTTON : begin state <= (  vid_long || vid_press  				) ? S_SEARCH  : S_BUTTON  ; end
-			S_SEARCH : begin state <= (  search_done                       ) ? S_LOOKUP1 : S_SEARCH  ; end
+			S_SEARCH : begin state <= (  search_done                       ) ? S_PROP1   : S_SEARCH  ; end
+			S_PROP1  : begin state <=                                          S_PROP2               ; end
+			S_PROP2  : begin state <=                                          S_PROP3               ; end
+			S_PROP3  : begin state <=                                          S_PROP4               ; end
+			S_PROP4  : begin state <=                                          S_PROP5               ; end
+			S_PROP5  : begin state <=                                          S_LOOKUP1             ; end
 			S_LOOKUP1: begin state <=                                          S_LOOKUP2             ; end
-			S_LOOKUP2: begin state <=                                          S_VECMAP              ; end
-			S_VECMAP : begin state <= (  map_done                          ) ? S_DONE    : S_VECMAP  ; end
+			S_LOOKUP2: begin state <=                                          S_LOOKUP3             ; end
+			S_LOOKUP3: begin state <=                                          S_LOOKUP4             ; end
+			S_LOOKUP4: begin state <=                                          S_VECMAP              ; end
+			S_VECMAP : begin state <= (  map_done                          ) ? S_WAIT1   : S_VECMAP  ; end
+			S_WAIT1  : begin state <=                                          S_WAIT2               ; end
+			S_WAIT2  : begin state <=                                          S_WAIT3               ; end
+			S_WAIT3  : begin state <=                                          S_WAIT4               ; end
+			S_WAIT4  : begin state <=                                          S_DONE                ; end
 			S_DONE 	: begin state <= ( !done && ( vid_long || vid_press ) ) ? S_SEARCH  : 
 			                          (  done               && vid_press   ) ? S_INIT    : S_DONE    ; end
 			default  : begin state <= 4'bxxxx; end
@@ -366,7 +393,7 @@ assign speaker_n = !speaker;
 	// Count number of strings of lights
 	logic [15:0] scount;
 	always_ff @(posedge hdmi_clk)
-		scount <= ( state == S_INIT ) ? 0 : ( state == S_BUTTON && ( vid_long || vid_press ) ) ? scount + 1 : scount;
+		scount <= ( state == S_INIT ) ? 0 : ( state == S_SEARCH && search_done ) ? scount + 1 : scount;
 	
 
 	// Video copy of Color table (always read to screen at raster rate) displayed live (during 40? sec solve) on right window
@@ -403,7 +430,7 @@ assign speaker_n = !speaker;
 		logic [63:0] thresh; // min cost threshold
 		logic [63:0] distance; // pair cost^2
 		logic [63:0] cost; // best cost so far
-		logic [63:0] last_candidate; // reported puzzle sum, when we finish!
+		logic [35:0] candidate; // reported puzzle sum, when we finish!
 		
 			logic [9:0] best_a, best_b;
 			logic [9:0] a_count, b_count; 
@@ -413,6 +440,7 @@ assign speaker_n = !speaker;
 		   logic [63:0] box1, box2;
 			logic search_run;
 			logic [5:0] search_run_d;
+			logic [2:0][35:0] xprod;
 			assign search_run = ( state == S_SEARCH ) ? 1'b1 : 1'b0;
 			assign search_done = ( a_count == 998 && b_count == 999 ) ? 1'b1 : 1'b0;
 			always_ff @(posedge hdmi_clk) begin
@@ -448,13 +476,18 @@ assign speaker_n = !speaker;
 				distance <= dx2 + dy2 + dz2;
 				
 				// Update best
-				cost <= ( !search_run ) ? (10000*10000)*3 : 
-				        ( search_run && distance > thresh && distance < cost ) ? distance : cost;
-				best_a <= ( search_run && distance > thresh && distance < cost ) ? a_count_del[4] : best_a;
-				best_b <= ( search_run && distance > thresh && distance < cost ) ? b_count_del[4] : best_b;
+				cost <= ( search_run_d[0] && !search_run_d[1] ) ? (100000*100000)*3 : // Init cost at start of search
+				        ( search_run_d[3] && distance > thresh && distance < cost ) ? distance : cost;
+				best_a <= ( search_run_d[3] && distance > thresh && distance < cost ) ? a_count_del[3] : best_a;
+				best_b <= ( search_run_d[3] && distance > thresh && distance < cost ) ? b_count_del[3] : best_b;
 				
 				// update thresh when done
-				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[5] && !search_run_d[4] ) ? cost : thresh;  
+				thresh <= ( state == S_INIT ) ? 0 : ( search_run_d[4] && !search_run_d[3] ) ? cost : thresh;  
+				
+				// Last Candiate is product of x coordinates
+				xprod[0] <= box1[53-:18] * box2[53-:18];
+				xprod[2:1] <= xprod[1:0];
+				candidate <= ( search_run_d[3] && distance > thresh && distance < cost ) ? xprod[2] : candidate;
 			end
 		end
 	
@@ -465,10 +498,6 @@ assign speaker_n = !speaker;
 	logic [9:0] a_color, b_color;
 	logic [9:0] min_color, max_color; 
 	logic [9:0] mapped;
-	always_ff @(posedge hdmi_clk) begin
-		a_color <= ( state == S_LOOKUP1 ) ? read_color : a_color;
-		b_color <= ( state == S_LOOKUP2 ) ? read_color : b_color;
-	end
 	assign min_color = ( a_color < b_color ) ? a_color : b_color;
 	assign max_color = ( a_color < b_color ) ? b_color : a_color;
 	assign mapped = ( read_color == max_color ) ? min_color : read_color;
@@ -484,23 +513,33 @@ assign speaker_n = !speaker;
 	logic [9:0] ctable_waddr;
 	logic [9:0] c_count;
 	logic [9:0] read_color;
+	logic [1:0] c_active;
 	
-	
-
 	always_ff @(posedge hdmi_clk) begin
-		c_count <= ( state == S_IDLE  || state == S_LOOKUP2 ) ? 0 :
-					  ( state == S_INIT  || state == S_VECMAP  ) ? c_count + 1 : c_count ;
+		c_active[0] <= ( state == S_INIT || state == S_VECMAP ) ? 1'b1 : 1'b0;
+		c_active[1] <= c_active[0];
+		c_count <= ( state == S_INIT  || state == S_VECMAP  ) ? c_count + 1 : 0 ;
 		ctable_addr <= ( state == S_LOOKUP1 ) ? best_a :
 		               ( state == S_LOOKUP2 ) ? best_b : c_count ;
 		ctable_waddr <= ctable_addr;
 		read_color <= ctable[ ctable_addr ];
-		if( state == S_INIT || state == S_VECMAP ) begin
-			ctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
-		  vctable[ctable_waddr] <= ( S_INIT ) ? c_count : mapped;
+		a_color <= ( state == S_LOOKUP3 ) ? read_color : a_color;
+		b_color <= ( state == S_LOOKUP4 ) ? read_color : b_color;
+		if( c_active[1] ) begin
+			ctable[ctable_waddr] <= ( state == S_VECMAP ||  state == S_WAIT1 || state == S_WAIT2 ) ? mapped : ctable_waddr;
+		  vctable[ctable_waddr] <= ( state == S_VECMAP ||  state == S_WAIT1 || state == S_WAIT2 ) ? mapped : ctable_waddr;
 		end	
 	end
-	assign init_done = ( state == S_INIT   && c_count == 10'h3ff ) ? 1'b1 : 1'b0;
-	assign map_done  = ( state == S_VECMAP && c_count == 10'h3ff ) ? 1'b1 : 1'b0;
+	assign init_done = ( state == S_INIT   && c_count == 10'd999 ) ? 1'b1 : 1'b0;
+	assign map_done  = ( state == S_VECMAP && c_count == 10'd999 ) ? 1'b1 : 1'b0;
+	
+	
+	// Monitor for done
+	logic non_zero_flag;
+	always_ff @(posedge hdmi_clk) begin
+		non_zero_flag <= ( c_active[0] && !c_active[1] ) ? 0 : ( c_active[1] && mapped != 10'd0) ? 1 : non_zero_flag;
+		done <= ( state == S_INIT ) ? 0 : ( state == S_WAIT3 && !non_zero_flag ) ? 1 : done;
+	end
 			                                                                        //
 	//                                                                            //
 	////////////////////////////////////////////////////////////////////////////////
@@ -586,15 +625,29 @@ assign speaker_n = !speaker;
 
 	
 	// Overlay Text - Dynamic
-	logic [35:0] candidate = 36'h012345678;
-	logic [10:0] id_str; 
+
+	logic [30:0] id_str; 
 	string_overlay #(.LEN(25)) _id0(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d8 ), .out( id_str[0]), .str( "Advent of Code 2025 Day 8" ) );
-	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d48), .out( id_str[1]), .str( "Strings:0x" ) );
-	string_overlay #(.LEN(10)) _id2(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[2]), .str( " Part 1:  " ) );
+	string_overlay #(.LEN(10)) _id1(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d50), .out( id_str[1]), .str( "Strings:0x" ) );
 	string_overlay #(.LEN(10)) _id3(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d40), .y('d52), .out( id_str[3]), .str( " Part 2:0x" ) );
-	string_overlay #(.LEN(7 )) _id4(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d50), .y('d50), .out( id_str[4]), .str( "Yikes!!" ) );
 	hex_overlay    #(.LEN(9 )) _id5(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d52), .out( id_str[5]), .in( candidate[35:0] ) );
-	hex_overlay    #(.LEN(4 )) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d48), .out( id_str[6]), .in( scount ) );
+	hex_overlay    #(.LEN(4 )) _id6(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d50), .out( id_str[6]), .in( scount ) );
+	
+	string_overlay #(.LEN(12)) _id7(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d50), .out( id_str[7]), .str( "Best A     :" ) );
+	string_overlay #(.LEN(12)) _id8(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d51), .out( id_str[8]), .str( "Best B     :" ) );
+	string_overlay #(.LEN(12)) _id9(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d52), .out( id_str[9]), .str( "Color A    :" ) );
+	string_overlay #(.LEN(12)) _ida(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d53), .out( id_str[10]), .str( "Color B    :" ) );
+	string_overlay #(.LEN(12)) _idb(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d54), .out( id_str[11]), .str( "Best Cost  :" ) );
+	string_overlay #(.LEN(12)) _idc(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.ascii_char(ascii_char), .x('d65), .y('d55), .out( id_str[12]), .str( "Min Thresh :" ) );
+	hex_overlay    #(.LEN(3 )) _idd(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d50), .out( id_str[13]), .in( { 2'b00, best_a  } ) );
+	hex_overlay    #(.LEN(3 )) _ide(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d51), .out( id_str[14]), .in( { 2'b00, best_b  } ) );
+	hex_overlay    #(.LEN(3 )) _idf(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d52), .out( id_str[15]), .in( { 2'b00, a_color } ) );
+	hex_overlay    #(.LEN(3 )) _idg(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d53), .out( id_str[16]), .in( { 2'b00, b_color } ) );
+	hex_overlay    #(.LEN(16)) _idh(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d54), .out( id_str[17]), .in( cost ) );
+	hex_overlay    #(.LEN(16)) _idi(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d77), .y('d55), .out( id_str[18]), .in( thresh ) );
+
+	hex_overlay    #(.LEN(1 )) _idj(.clk(hdmi_clk), .reset(reset), .char_x(char_x), .char_y(char_y),.hex_char(hex_char),     .x('d50), .y('d54), .out( id_str[19]), .in( {2'b00, done, non_zero_flag} ) );
+	
 	
 	logic overlay; // default overlay layer bit
 	assign overlay = ( text_ovl && text_color == 0 ) | // normal text
