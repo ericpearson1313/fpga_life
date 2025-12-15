@@ -536,7 +536,7 @@ assign speaker_n = !speaker;
 	logic [11:0] non_zero_count;
 	always_ff @(posedge hdmi_clk) begin
 		non_zero_count <= ( c_active[0] && !c_active[1] ) ? 0 : ( c_active[1] && (mapped != 0) ) ? non_zero_count + 1 : non_zero_count;
-		done <= ( state == S_INIT ) ? 0 : ( state == S_WAIT3 && non_zero_count <= 1 ) ? 1 : done; // hack
+		done <= ( state == S_INIT ) ? 0 : ( state == S_WAIT3 && non_zero_count == 0 ) ? 1 : done;
 	end
 			                                                                        //
 	//                                                                            //
