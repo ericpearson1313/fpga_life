@@ -2,7 +2,9 @@
 
 I thought of this as a color problem. With 1000 boxes, each with its own color, then as strings of lights are plugged in to the next 'closest' pair of boxes, they would take on the higher priority color. Implemented as an fpga as it promised a dynamic color display. Left and right boxes each start with the 1024 unique color pallet, and the right hand side is updated as the next shortest string is added between a pair of boxes, and the color is updated to be the higher priority. I set it up so the upper left brightest green color would be everywhere when complete. It also shows how slow my primative exhaustive search is. I'm running at the 32mhz video clock which simplified display, and getting about 64 strings/sec. So it takes under 2 min to complete.
 
-![Watch the video](fpga_aoc25_day8_part2.mp4)
+![Watch the video](fpga_aoc25_day8_part2.mp4)  oops github does not support vid play?
+
+![Watch it here instead](https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4)
 
 # AOC Day 7 Part 1 and 2
 
