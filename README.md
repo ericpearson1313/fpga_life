@@ -6,6 +6,8 @@ I thought of this as a color problem. With 1000 boxes, each with its own color, 
 
 ![Watch it here instead](https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4)
 
+Well here's a link: https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4
+
 # AOC Day 7 Part 1 and 2
 
 Built this FPGA on day 4 fpga with the life engine removed. I modified rom_build.c to insert the day 7 puzzle text coded as a 2-bit image 142x142 into the flash mif file.
