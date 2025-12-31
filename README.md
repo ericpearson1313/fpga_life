@@ -1,12 +1,9 @@
 # AOC Day 8 Part 2
 
-I thought of this as a color problem. With 1000 boxes, each with its own color, then as strings of lights are plugged in to the next 'closest' pair of boxes, they would take on the higher priority color. Implemented as an fpga as it promised a dynamic color display. Left and right boxes each start with the 1024 unique color pallet, and the right hand side is updated as the next shortest string is added between a pair of boxes, and the color is updated to be the higher priority. I set it up so the upper left brightest green color would be everywhere when complete. It also shows how slow my primative exhaustive search is. I'm running at the 32mhz video clock which simplified display, and getting about 64 strings/sec. So it takes under 2 min to complete.
+I thought of this as a color problem. With 1000 boxes, each with its own color, then as strings of lights are plugged in to the next 'closest' pair of boxes, they would take on the higher priority color. Implemented as an fpga as it promised a dynamic color display. Left and right boxes each start with the 1024 unique color pallet, and the right hand side is updated as the next shortest string is added between a pair of boxes, and the color is updated to be the higher priority if differnt. I set it up so the upper left brightest green color would be everywhere when complete. It also shows how slow my primative exhaustive search is. I'm running at the 32mhz video clock which simplified display, with the box coordiates pre-loaded from flash into a 1W2R sram and search all pairs for the next shortest distance getting about 64 strings/sec. So it takes about 2 min to completely connect the 1000 boxes into a single network. (I'm not sure why the Elves did not use Dijkstra's)
 
-![Watch the video](fpga_aoc25_day8_part2.mp4)  oops github does not support vid play?
+[![Day8](https://eric-afi-bucket.s3.us-east-1.amazonaws.com/aoc_day8.gif)](https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4)
 
-![Watch it here instead](https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4)
-
-Well here's a link: https://eric-afi-bucket.s3.us-east-1.amazonaws.com/fpga_aoc25_day8_part2.mp4
 
 # AOC Day 7 Part 1 and 2
 
